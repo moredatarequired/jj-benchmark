@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Search, Trophy, ListTree } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import Link from "next/link";
+import zealtConfig from "@/zealt/config.json";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -14,6 +15,7 @@ function cn(...inputs: ClassValue[]) {
 export interface LeaderboardEntry {
   id: string;
   model: string;
+  rawModel: string;
   agent: string;
   passedEvals: number;
   successRate: number;
@@ -60,10 +62,18 @@ function ScoreCell({ value }: { value: number }) {
 
 export default function LeaderboardTable({ data }: { data: LeaderboardEntry[] }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const devMode = searchParams.get("devMode") === "true";
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredData = useMemo(() => {
     let processedData = data;
+
+    if (!devMode && zealtConfig.models) {
+      processedData = processedData.filter((item) =>
+        zealtConfig.models.includes(item.rawModel)
+      );
+    }
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -73,7 +83,7 @@ export default function LeaderboardTable({ data }: { data: LeaderboardEntry[] })
     }
 
     return processedData;
-  }, [data, searchQuery]);
+  }, [data, searchQuery, devMode]);
 
   return (
     <>

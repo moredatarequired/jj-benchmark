@@ -213,8 +213,8 @@ export function TasksPageClient({ tasksData }: TasksPageClientProps) {
       tasksData.flatMap((task) =>
         task.trials
           .filter((trial) => {
-            if (!devMode && zealtConfig.models) {
-              return zealtConfig.models.includes(trial.rawModel);
+            if (!devMode && zealtConfig.models && zealtConfig.models.length > 0) {
+              return (zealtConfig.models as string[]).includes(trial.rawModel);
             }
             return true;
           })

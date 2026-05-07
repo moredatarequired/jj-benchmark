@@ -69,9 +69,9 @@ export default function LeaderboardTable({ data }: { data: LeaderboardEntry[] })
   const filteredData = useMemo(() => {
     let processedData = data;
 
-    if (!devMode && zealtConfig.models) {
+    if (!devMode && zealtConfig.models && zealtConfig.models.length > 0) {
       processedData = processedData.filter((item) =>
-        zealtConfig.models.includes(item.rawModel)
+        (zealtConfig.models as string[]).includes(item.rawModel)
       );
     }
 

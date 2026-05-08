@@ -57,7 +57,7 @@ export function TrajectoryPage({
   const [mounted, setMounted] = useState(false);
   const [iframeLoading, setIframeLoading] = useState(true);
 
-  const devModeEnabled = searchParams.get("devMode") === "true";
+  const devModeEnabled = searchParams.get("dev") === "true";
   const visibleTabsConfig = useMemo(
     () =>
       devModeEnabled

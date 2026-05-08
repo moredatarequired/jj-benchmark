@@ -184,7 +184,7 @@ export function TasksPageClient({ tasksData }: TasksPageClientProps) {
     const initialAgents = (params.get("agent") || "").split(",").filter(Boolean);
     const initialSort = params.get("sort") || "default";
     const initialOrder = params.get("order") || "asc";
-    const initialDevMode = params.get("devMode") === "true";
+    const initialDevMode = params.get("dev") === "true";
 
     setQueryQ(initialQ);
     setSearchQuery(initialQ);
@@ -213,8 +213,8 @@ export function TasksPageClient({ tasksData }: TasksPageClientProps) {
       tasksData.flatMap((task) =>
         task.trials
           .filter((trial) => {
-            if (!devMode && zealtConfig.models && zealtConfig.models.length > 0) {
-              return (zealtConfig.models as string[]).includes(trial.rawModel);
+            if (!devMode && zealtConfig.hidden_models && zealtConfig.hidden_models.length > 0) {
+              return !(zealtConfig.hidden_models as string[]).includes(trial.rawModel);
             }
             return true;
           })

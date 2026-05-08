@@ -63,21 +63,21 @@ function ScoreCell({ value }: { value: number }) {
 export default function LeaderboardTable({ data }: { data: LeaderboardEntry[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const devMode = searchParams.get("devMode") === "true";
+  const devMode = searchParams.get("dev") === "true";
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredData = useMemo(() => {
     let processedData = data;
 
-    if (!devMode && zealtConfig.models && zealtConfig.models.length > 0) {
+    if (!devMode && zealtConfig.hidden_models && zealtConfig.hidden_models.length > 0) {
       processedData = processedData.filter((item) =>
-        (zealtConfig.models as string[]).includes(item.rawModel)
+        !(zealtConfig.hidden_models as string[]).includes(item.rawModel)
       );
     }
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      processedData = processedData.filter(item => 
+      processedData = processedData.filter(item =>
         item.model.toLowerCase().includes(query)
       );
     }
@@ -94,14 +94,14 @@ export default function LeaderboardTable({ data }: { data: LeaderboardEntry[] })
         </h2>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto">
-          <Link 
-            href="./tasks" 
+          <Link
+            href="./tasks"
             className="flex items-center justify-center gap-2 px-4 py-2 border border-border bg-card/50 hover:bg-secondary/50 text-foreground rounded-lg text-sm font-medium transition-colors shadow-sm backdrop-blur-sm whitespace-nowrap"
           >
             <ListTree className="w-4 h-4" />
             View Tasks
           </Link>
-          
+
           <div className="relative w-full sm:w-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input

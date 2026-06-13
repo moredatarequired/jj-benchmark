@@ -2,6 +2,8 @@ import fs from 'fs/promises';
 import path from 'path';
 
 type TaskTrial = {
+  task_name: string;
+  job_id: string;
   job_name: string;
   trial_name: string;
   agent: string;
@@ -25,6 +27,12 @@ type TaskTrial = {
   browser_verification_cases?: string[];
   artifacts?: ArtifactNode[];
 };
+
+/** Take the suffix after the last "__" in trial_name as job_id, or null if missing. */
+function deriveJobId(trialName: string): string | null {
+  const sep = trialName.lastIndexOf('__');
+  return sep >= 0 ? trialName.slice(sep + 2) : null;
+}
 
 type ArtifactNode = {
   name: string;
@@ -197,6 +205,12 @@ async function main() {
     const jobName = file.split('/')[0] || file.split('\\')[0];
     const trialName = data.trial_name || 'unknown-trial';
 
+    const jobId = deriveJobId(trialName);
+    if (jobId === null) {
+      console.error(`[compute-tasks] skipping trial "${trialName}" under task "${taskName}": missing "__" separator`);
+      continue;
+    }
+
     const verifierPochiDir = path.join(jobsDir, jobName, trialName, 'verifier', 'pochi');
     let browserVerificationCases: string[] = [];
     try {
@@ -212,6 +226,8 @@ async function main() {
     const artifacts = await readArtifactTree(artifactsDir, 'artifacts');
 
     tasks[taskName].trials.push({
+      task_name: taskName,
+      job_id: jobId,
       job_name: jobName,
       trial_name: trialName,
       agent: agentName,

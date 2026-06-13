@@ -13,8 +13,10 @@ type RouteParams = {
 };
 
 type TrialEntry = {
-  trial_name: string;
+  task_name: string;
+  job_id: string;
   job_name: string;
+  trial_name: string;
   agent: string;
   passed?: boolean;
   error?: boolean;
@@ -125,18 +127,6 @@ function buildTaskDirUrl(taskName: string) {
   return `${zealtConfig.github_repo}/tree/${branch}/tasks/${encodeURIComponent(taskName)}`;
 }
 
-function splitTrialName(trialName: string): { taskName: string; jobId: string } | null {
-  const separatorIndex = trialName.lastIndexOf("__");
-  if (separatorIndex <= 0 || separatorIndex >= trialName.length - 2) {
-    return null;
-  }
-
-  return {
-    taskName: trialName.slice(0, separatorIndex),
-    jobId: trialName.slice(separatorIndex + 2),
-  };
-}
-
 function getServerBaseUrl() {
   return process.env.CLIPS_BASE_URL || 'https://fletch.getpochi.com';
 }
@@ -201,6 +191,8 @@ function isTrialEntry(value: unknown): value is TrialEntry {
 
   const trial = value as Record<string, unknown>;
   if (
+    typeof trial.task_name !== "string" ||
+    typeof trial.job_id !== "string" ||
     typeof trial.trial_name !== "string" ||
     typeof trial.job_name !== "string" ||
     typeof trial.agent !== "string"
@@ -212,29 +204,23 @@ function isTrialEntry(value: unknown): value is TrialEntry {
 }
 
 function findTrialEntry(taskName: string, jobId: string): TrialEntry | null {
-  for (const task of Object.values(tasksData as Record<string, unknown>)) {
-    if (typeof task !== "object" || task === null) {
+  const task = (tasksData as Record<string, unknown>)[taskName];
+  if (typeof task !== "object" || task === null) {
+    return null;
+  }
+
+  const trials = (task as { trials?: unknown }).trials;
+  if (!Array.isArray(trials)) {
+    return null;
+  }
+
+  for (const trial of trials) {
+    if (!isTrialEntry(trial)) {
       continue;
     }
 
-    const trials = (task as { trials?: unknown }).trials;
-    if (!Array.isArray(trials)) {
-      continue;
-    }
-
-    for (const trial of trials) {
-      if (!isTrialEntry(trial)) {
-        continue;
-      }
-
-      const splitName = splitTrialName(trial.trial_name);
-      if (!splitName) {
-        continue;
-      }
-
-      if (splitName.taskName === taskName && splitName.jobId === jobId) {
-        return trial;
-      }
+    if (trial.job_id === jobId) {
+      return trial;
     }
   }
 
@@ -261,14 +247,9 @@ export function generateStaticParams(): RouteParams[] {
         continue;
       }
 
-      const splitName = splitTrialName(trial.trial_name);
-      if (!splitName) {
-        continue;
-      }
-
       params.push({
-        name: splitName.taskName,
-        jobId: splitName.jobId,
+        name: trial.task_name,
+        jobId: trial.job_id,
       });
     }
   }

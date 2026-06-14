@@ -3,7 +3,6 @@ import path from 'path';
 
 type TaskTrial = {
   task_name: string;
-  job_id: string;
   job_name: string;
   trial_name: string;
   agent: string;
@@ -27,12 +26,6 @@ type TaskTrial = {
   browser_verification_cases?: string[];
   artifacts?: ArtifactNode[];
 };
-
-/** Take the suffix after the last "__" in trial_name as job_id, or null if missing. */
-function deriveJobId(trialName: string): string | null {
-  const sep = trialName.lastIndexOf('__');
-  return sep >= 0 ? trialName.slice(sep + 2) : null;
-}
 
 type ArtifactNode = {
   name: string;
@@ -107,9 +100,10 @@ async function readArtifactTree(absDir: string, relPath: string): Promise<Artifa
 async function getResultFiles(dir: string): Promise<string[]> {
   const files: string[] = [];
   try {
-    const jobs = await fs.readdir(dir, { withFileTypes: true });
+    const jobs = (await fs.readdir(dir, { withFileTypes: true }))
+      .filter((j) => j.isDirectory())
+      .sort((a, b) => a.name.localeCompare(b.name));
     for (const job of jobs) {
-      if (!job.isDirectory()) continue;
       const jobDir = path.join(dir, job.name);
       const trials = await fs.readdir(jobDir, { withFileTypes: true });
       for (const trial of trials) {
@@ -205,12 +199,6 @@ async function main() {
     const jobName = file.split('/')[0] || file.split('\\')[0];
     const trialName = data.trial_name || 'unknown-trial';
 
-    const jobId = deriveJobId(trialName);
-    if (jobId === null) {
-      console.error(`[compute-tasks] skipping trial "${trialName}" under task "${taskName}": missing "__" separator`);
-      continue;
-    }
-
     const verifierPochiDir = path.join(jobsDir, jobName, trialName, 'verifier', 'pochi');
     let browserVerificationCases: string[] = [];
     try {
@@ -227,7 +215,6 @@ async function main() {
 
     tasks[taskName].trials.push({
       task_name: taskName,
-      job_id: jobId,
       job_name: jobName,
       trial_name: trialName,
       agent: agentName,

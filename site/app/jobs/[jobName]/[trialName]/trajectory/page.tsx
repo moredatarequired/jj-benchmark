@@ -8,13 +8,12 @@ import { Suspense } from "react";
 
 
 type RouteParams = {
-  name: string;
-  jobId: string;
+  jobName: string;
+  trialName: string;
 };
 
 type TrialEntry = {
   task_name: string;
-  job_id: string;
   job_name: string;
   trial_name: string;
   agent: string;
@@ -192,7 +191,6 @@ function isTrialEntry(value: unknown): value is TrialEntry {
   const trial = value as Record<string, unknown>;
   if (
     typeof trial.task_name !== "string" ||
-    typeof trial.job_id !== "string" ||
     typeof trial.trial_name !== "string" ||
     typeof trial.job_name !== "string" ||
     typeof trial.agent !== "string"
@@ -203,24 +201,25 @@ function isTrialEntry(value: unknown): value is TrialEntry {
   return true;
 }
 
-function findTrialEntry(taskName: string, jobId: string): TrialEntry | null {
-  const task = (tasksData as Record<string, unknown>)[taskName];
-  if (typeof task !== "object" || task === null) {
-    return null;
-  }
-
-  const trials = (task as { trials?: unknown }).trials;
-  if (!Array.isArray(trials)) {
-    return null;
-  }
-
-  for (const trial of trials) {
-    if (!isTrialEntry(trial)) {
+function findTrialEntry(jobName: string, trialName: string): TrialEntry | null {
+  for (const task of Object.values(tasksData as Record<string, unknown>)) {
+    if (typeof task !== "object" || task === null) {
       continue;
     }
 
-    if (trial.job_id === jobId) {
-      return trial;
+    const trials = (task as { trials?: unknown }).trials;
+    if (!Array.isArray(trials)) {
+      continue;
+    }
+
+    for (const trial of trials) {
+      if (!isTrialEntry(trial)) {
+        continue;
+      }
+
+      if (trial.job_name === jobName && trial.trial_name === trialName) {
+        return trial;
+      }
     }
   }
 
@@ -248,15 +247,15 @@ export function generateStaticParams(): RouteParams[] {
       }
 
       params.push({
-        name: trial.task_name,
-        jobId: trial.job_id,
+        jobName: trial.job_name,
+        trialName: trial.trial_name,
       });
     }
   }
 
   // If no params found, add a dummy one to satisfy next.js output: export requirement if it exists
   if (params.length === 0) {
-    return [{ name: "dummy", jobId: "dummy" }];
+    return [{ jobName: "dummy", trialName: "dummy" }];
   }
 
   return params;
@@ -269,20 +268,19 @@ export default async function TrajectoryRoutePage({
 }) {
   const resolvedParams = await params;
 
-  const trialEntry = findTrialEntry(resolvedParams.name, resolvedParams.jobId);
+  const trialEntry = findTrialEntry(resolvedParams.jobName, resolvedParams.trialName);
   const fallbackUrl = trialEntry
     ? buildFallbackUrl(trialEntry.job_name, trialEntry.trial_name)
     : null;
-  const headerTitle = `${resolvedParams.name}__${resolvedParams.jobId}`;
+  const headerTitle = resolvedParams.trialName;
   const startedAt = trialEntry ? formatStartTime(trialEntry.job_name) : "Unknown";
   const executionDurationLabel = formatDuration(trialEntry?.latency_breakdown?.agent_exec ?? null);
   const trialStatus = getTrialStatus(trialEntry);
   const statusMeta = getStatusMeta(trialStatus);
   const StatusIcon = statusMeta.Icon;
-  const taskDirUrl = buildTaskDirUrl(resolvedParams.name);
 
   const trajectoryUrl = trialEntry
-    ? buildClipUrl(trialEntry.job_name, trialEntry.trial_name, resolvedParams.name)
+    ? buildClipUrl(trialEntry.job_name, trialEntry.trial_name, trialEntry.task_name)
     : null;
   const browserVerificationUrls = trialEntry?.browser_verification_cases
     ? trialEntry.browser_verification_cases.map((testCase) => ({
@@ -313,6 +311,7 @@ export default async function TrajectoryRoutePage({
     redirect(fallbackUrl ?? "/tasks");
   }
 
+  const taskDirUrl = buildTaskDirUrl(trialEntry.task_name);
   const stderrLogUrl = trialEntry
     ? buildRawGithubContentUrl(trialEntry.job_name, trialEntry.trial_name, `agent/${trialEntry.agent}/stderr.txt`)
     : null;

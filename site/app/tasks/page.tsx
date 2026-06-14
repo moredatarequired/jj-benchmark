@@ -6,7 +6,6 @@ import { TasksPageClient, type CompactTask, type CompactTrial } from "./componen
 
 type RawTaskTrial = {
   task_name?: string;
-  job_id?: string;
   job_name?: string;
   trial_name?: string;
   trajectory_id?: string;
@@ -34,7 +33,7 @@ type PendingTasksValue = {
 };
 
 function toCompactTrial(taskName: string, trial: RawTaskTrial): CompactTrial | null {
-  if (!trial.job_name || !trial.trial_name || !trial.model || !trial.agent || !trial.job_id) {
+  if (!trial.job_name || !trial.trial_name || !trial.model || !trial.agent) {
     return null;
   }
 
@@ -61,7 +60,6 @@ function toCompactTrial(taskName: string, trial: RawTaskTrial): CompactTrial | n
     latency_sec: trial.latency_sec ?? null,
     latency_breakdown: latencyBreakdown,
     taskName: canonicalTaskName,
-    jobId: trial.job_id,
     exec_duration: latencyBreakdown.agent_exec ?? trial.latency_sec ?? 0,
   };
 }

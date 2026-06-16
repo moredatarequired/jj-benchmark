@@ -9,6 +9,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  ArrowLeft,
   Filter,
   X,
   ExternalLink,
@@ -440,8 +441,12 @@ export function TasksPageClient({ tasksData }: TasksPageClientProps) {
     <div className="container mx-auto px-4 sm:px-8 lg:px-12 py-8 max-w-screen-2xl h-[100dvh] flex flex-col overflow-hidden">
       <div className="mb-6 space-y-4 shrink-0">
         <div className="flex items-center gap-4">
-          <Link href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            &larr; Back to Leaderboard
+          <Link
+            href="/"
+            className="group inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+            <span>Back to Leaderboard</span>
           </Link>
         </div>
         <div>

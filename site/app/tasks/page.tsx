@@ -1,8 +1,11 @@
 import { Suspense } from "react";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import tasksDataRaw from "@/zealt/tasks.json";
 import pendingTasksData from "@/zealt/pending-tasks.json";
 import PendingReviewCard from "@/components/pending-review-card";
 import { TasksPageClient, type CompactTask, type CompactTrial } from "./components/tasks-page-client";
+import { TasksPageSkeleton } from "./components/tasks-page-skeleton";
 
 type RawTaskTrial = {
   task_name?: string;
@@ -105,9 +108,13 @@ export default function TasksPage() {
         <div className="container mx-auto px-4 sm:px-8 lg:px-12 py-8 max-w-screen-2xl h-[100dvh] flex flex-col overflow-hidden">
           <div className="mb-6 space-y-4 shrink-0">
             <div className="flex items-center gap-4">
-              <a href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                &larr; Back to Leaderboard
-              </a>
+              <Link
+                href="/"
+                className="group inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+                <span>Back to Leaderboard</span>
+              </Link>
             </div>
             <div>
               <h1 className="text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-foreground to-foreground/50">
@@ -119,7 +126,7 @@ export default function TasksPage() {
           <PendingReviewCard pendingSampleCases={pendingSampleCases} />
         </div>
       ) : (
-        <Suspense fallback={<div className="container mx-auto py-8 text-center">Loading tasks...</div>}>
+        <Suspense fallback={<TasksPageSkeleton />}>
           <TasksPageClient tasksData={compactTasksData} />
         </Suspense>
       )}

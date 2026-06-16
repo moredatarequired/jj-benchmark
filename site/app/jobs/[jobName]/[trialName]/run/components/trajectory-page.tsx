@@ -192,7 +192,7 @@ export function TrajectoryPage({
 
   return (
     <div className="h-full w-full pb-4 pt-4 sm:pb-6 sm:pt-5">
-      <div className="mx-auto h-full w-full max-w-[1400px] px-4 sm:px-7 lg:px-10">
+      <div className="mx-auto h-full w-full max-w-screen-2xl px-4 sm:px-8 lg:px-12">
           <Tabs
             value={activeTab}
             onValueChange={handleTabChange}

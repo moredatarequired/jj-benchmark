@@ -2,8 +2,9 @@ import tasksData from "@/zealt/tasks.json";
 import { TrajectoryPage, type TabConfig } from "./components/trajectory-page";
 import type { ArtifactNode, ArtifactNodeWithUrl } from "./components/artifacts-panel";
 import zealtConfig from "@/zealt/config.json";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, Check, ExternalLink, HelpCircle, X as XIcon } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, ExternalLink, HelpCircle, X as XIcon } from "lucide-react";
 import { Suspense } from "react";
 
 
@@ -347,30 +348,39 @@ export default async function TrajectoryRoutePage({
     <div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground font-sans selection:bg-primary/20">
       <div className="fixed inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2a2a2a_1px,transparent_1px)] [background-size:16px_16px] [mask-image:radial-gradient(ellipse_50%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-20 dark:opacity-40"></div>
       <div className="z-40 shrink-0 bg-background/85 backdrop-blur-sm">
-        <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-7 sm:py-8 lg:px-10">
-          <div className="flex flex-col gap-1">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start sm:gap-2">
-              <h1 className="min-w-0 truncate whitespace-nowrap font-bold text-2xl">
-                {headerTitle}
-              </h1>
-              <a
-                href={taskDirUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group inline-flex w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-border/70 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground sm:text-sm"
-              >
-                <ExternalLink className="h-4 w-4" />
-                <span>Task</span>
-              </a>
-            </div>
-            <div className="mt-2 text-xs sm:text-sm">
-              <div className="flex flex-col gap-1 sm:flex-row sm:gap-4">
-                <span className={`inline-flex shrink-0 items-center gap-0 font-medium`}>
-                  <StatusIcon className={`h-3.5 w-3.5 ${statusMeta.className}`} />
-                  <span className={`${statusMeta.className} ml-0.5`}>{statusMeta.label}</span>
-                  <span className="text-muted-foreground ml-0.5">@{startedAt}</span>
-                </span>
-                <span className="text-muted-foreground truncate">Duration: {executionDurationLabel}</span>
+        <div className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-8 sm:py-8 lg:px-12">
+          <div className="flex flex-col gap-3">
+            <Link
+              href="/tasks"
+              className="group inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+              <span>Back to Tasks</span>
+            </Link>
+            <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start sm:gap-2">
+                <h1 className="min-w-0 truncate whitespace-nowrap font-bold text-2xl">
+                  {headerTitle}
+                </h1>
+                <a
+                  href={taskDirUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group inline-flex w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-border/70 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground sm:text-sm"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  <span>Task</span>
+                </a>
+              </div>
+              <div className="mt-2 text-xs sm:text-sm">
+                <div className="flex flex-col gap-1 sm:flex-row sm:gap-4">
+                  <span className={`inline-flex shrink-0 items-center gap-0 font-medium`}>
+                    <StatusIcon className={`h-3.5 w-3.5 ${statusMeta.className}`} />
+                    <span className={`${statusMeta.className} ml-0.5`}>{statusMeta.label}</span>
+                    <span className="text-muted-foreground ml-0.5">@{startedAt}</span>
+                  </span>
+                  <span className="text-muted-foreground truncate">Duration: {executionDurationLabel}</span>
+                </div>
               </div>
             </div>
           </div>

@@ -1,4 +1,4 @@
-FROM pochi-browser-verification-base
+FROM ubuntu:24.04
 
 # Install prerequisites
 RUN apt-get update && apt-get install -y \

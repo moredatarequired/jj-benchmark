@@ -7,7 +7,9 @@ PROJECT_DIR = "/home/user/repo"
 def test_feature_branch_rebased_onto_main():
     """Priority 1: Use jj CLI to verify feature-branch is rebased onto main."""
     result = subprocess.run(
-        ["jj", "log", "-r", "main..feature-branch", "--no-graph", "-T", "commit_id\n"],
+        # A bare newline is whitespace in jj's template language; the separator
+        # must be an explicit string concatenation or the ids run together.
+        ["jj", "log", "-r", "main..feature-branch", "--no-graph", "-T", 'commit_id ++ "\\n"'],
         capture_output=True, text=True, cwd=PROJECT_DIR
     )
     assert result.returncode == 0, f"'jj log' failed: {result.stderr}"

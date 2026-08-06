@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM jj-bench-base:0.38.0
 
 RUN apt-get update && apt-get install -y curl git python3 python3-pip && \
     curl -fsSL https://github.com/jj-vcs/jj/releases/download/v0.38.0/jj-v0.38.0-x86_64-unknown-linux-musl.tar.gz | \

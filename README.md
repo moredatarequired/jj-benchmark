@@ -9,6 +9,21 @@ You can view the evaluation reports at [tabbyml.github.io/jj-benchmark](https://
 - `tasks/`: Contains the benchmark tasks, each with its own instructions, bootstrap scripts, and tests.
 - `jobs/`: Stores the results of benchmark runs.
 - `site/`: A Next.js application to visualize benchmark results.
+- `base/`: Shared base image for all task environments.
+
+## Setup
+
+Every task environment is `FROM jj-bench-base:0.38.0`. Build it once before running:
+
+```bash
+./scripts/build-base.sh
+```
+
+Task builds fail with `pull access denied` if you skip this — the image is local only.
+
+The base bakes in jj and Claude Code. Harbor's agent adapter skips its own install when
+`claude` is already present, which is worth about 45% of total run time: it was otherwise
+reinstalled into every container on every trial.
 
 ## Contribution
 

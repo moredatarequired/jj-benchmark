@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM jj-bench-base:0.38.0
 
 # Avoid tzdata interactive prompt during package installation
 ENV DEBIAN_FRONTEND=noninteractive

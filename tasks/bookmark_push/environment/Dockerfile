@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM jj-bench-base:0.38.0
 
 # Install prerequisites
 RUN apt-get update && apt-get install -y \

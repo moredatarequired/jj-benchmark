@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM jj-bench-base:0.38.0
 
 # Install basic tools and Python for testing
 RUN apt-get update && apt-get install -y curl tar git python3 && rm -rf /var/lib/apt/lists/*

@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM jj-bench-base:0.38.0
 
 RUN apt-get update -y && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

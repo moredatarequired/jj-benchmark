@@ -2,7 +2,10 @@
 
 This repository contains benchmarks for [Jujutsu (jj)](https://github.com/martinvonz/jj), a next-generation version control system.
 
-You can view the evaluation reports at [tabbyml.github.io/jj-benchmark](https://tabbyml.github.io/jj-benchmark/).
+This is a fork. We're reworking it to measure whether a jj skill makes Claude better at
+jj — see [ROADMAP.md](ROADMAP.md) for what that involves and what's done so far.
+
+You can view the upstream evaluation reports at [tabbyml.github.io/jj-benchmark](https://tabbyml.github.io/jj-benchmark/).
 
 ## Project Structure
 

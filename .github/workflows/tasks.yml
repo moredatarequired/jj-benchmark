@@ -1,0 +1,166 @@
+name: tasks
+
+# Two cheap gates over the task definitions in tasks/.
+#
+#   lint  - pure-Python schema check, seconds, always runs.
+#   tasks - per-task container check: the bootstrap must produce the state it
+#           claims, and the verifier must NOT pass without an agent. A verifier
+#           that goes green on the untouched image is vacuous - it would score
+#           every model 100% on that task while measuring nothing.
+#
+# Deliberately *not* here: running reference solutions. That needs a solution
+# per task, which does not exist yet. These two gates catch the failure modes
+# that are cheap to catch.
+
+on:
+  pull_request:
+    paths:
+      - 'tasks/**'
+      - 'scripts/lint_tasks.py'
+      - '.github/workflows/tasks.yml'
+  workflow_dispatch:
+  schedule:
+    # Nightly at 07:00 UTC. PRs only exercise changed tasks, so this is what
+    # catches breakage that comes from outside the repo (a moved jj release
+    # tarball, a shifted ubuntu:24.04 base image, an apt package that vanished).
+    - cron: '0 7 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tasks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: schema lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ubuntu-latest ships Python 3.12, so tomllib is in the stdlib.
+      - name: Lint task definitions
+        run: python3 scripts/lint_tasks.py
+
+  prepare:
+    name: select tasks
+    runs-on: ubuntu-latest
+    outputs:
+      tasks: ${{ steps.select.outputs.tasks }}
+      count: ${{ steps.select.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need the merge-base to diff a PR against its target branch.
+          fetch-depth: 0
+
+      - name: Select task matrix
+        id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          all_tasks() {
+            # Any directory under tasks/ is a task.
+            find tasks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
+          }
+
+          if [ "$EVENT" = "pull_request" ]; then
+            # Only the tasks this PR actually touches. If the linter itself or
+            # this workflow changed, the blast radius is every task, so run all.
+            changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+            if echo "$changed" | grep -qE '^(scripts/lint_tasks\.py|\.github/workflows/tasks\.yml)$'; then
+              echo "shared tooling changed -> running every task"
+              selected=$(all_tasks)
+            else
+              selected=$(echo "$changed" \
+                | sed -n 's#^tasks/\([^/]*\)/.*#\1#p' \
+                | sort -u)
+            fi
+          else
+            # schedule / workflow_dispatch: the full sweep.
+            selected=$(all_tasks)
+          fi
+
+          # Drop names that no longer exist on disk (a PR that deletes a task).
+          kept=""
+          for t in $selected; do
+            [ -d "tasks/$t" ] && kept="$kept$t"$'\n'
+          done
+          kept=$(printf '%s' "$kept" | sed '/^$/d')
+
+          count=$(printf '%s' "$kept" | grep -c . || true)
+          echo "selected $count task(s):"
+          printf '%s\n' "$kept"
+
+          # jq -R -s -c 'split("\n") | map(select(length > 0))' turns the
+          # newline list into the JSON array fromJson() wants below.
+          json=$(printf '%s' "$kept" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "tasks=$json" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+  tasks:
+    name: ${{ matrix.task }}
+    needs: prepare
+    # Skip cleanly when a PR touched nothing under tasks/.
+    if: needs.prepare.outputs.count != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # One report per broken task beats one report and 52 cancellations.
+      max-parallel: 6
+      matrix:
+        task: ${{ fromJson(needs.prepare.outputs.tasks) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build task environment
+        run: docker build -t task-img tasks/${{ matrix.task }}/environment
+
+      # tests/test.sh is not used here: it pulls uv + the pochi-verifier
+      # package over the network on every run, which is far heavier than these
+      # two checks need. pytest alone is enough to execute the test files.
+      # Three tasks' Dockerfiles do not install python3/pip, so install them
+      # here; apt is a no-op for the other fifty.
+      - name: Add pytest to the image
+        run: |
+          # Empty build context: this layer needs nothing from the repo, and
+          # sending one keeps the step fast wherever it is run.
+          mkdir -p /tmp/pytest-layer
+          docker build -t task-img-pytest -f - /tmp/pytest-layer <<'EOF'
+          FROM task-img
+          RUN apt-get update \
+           && apt-get install -y --no-install-recommends python3 python3-pip \
+           && rm -rf /var/lib/apt/lists/* \
+           && python3 -m pip install --break-system-packages --no-cache-dir pytest
+          EOF
+
+      # The tests address absolute paths inside the image (/home/user/repo),
+      # so mount only the test file in and let it look at the real container.
+      - name: Bootstrap check - test_initial_state.py must PASS
+        run: |
+          docker run --rm \
+            -v "$PWD/tasks/${{ matrix.task }}/bootstrap/test_initial_state.py:/verify/test_initial_state.py:ro" \
+            task-img-pytest \
+            python3 -m pytest /verify/test_initial_state.py -rA
+
+      # The point of the whole workflow. No agent has run, so the verifier is
+      # looking at the untouched bootstrap state and MUST reject it. If it
+      # passes, the task scores every model 100% while measuring nothing.
+      - name: Vacuity check - test_final_state.py must FAIL with no agent
+        run: |
+          set +e
+          docker run --rm \
+            -v "$PWD/tasks/${{ matrix.task }}/tests/test_final_state.py:/verify/test_final_state.py:ro" \
+            task-img-pytest \
+            python3 -m pytest /verify/test_final_state.py -rA
+          status=$?
+          set -e
+          if [ $status -eq 0 ]; then
+            echo "::error title=Vacuous verifier::tasks/${{ matrix.task }}/tests/test_final_state.py passes on the untouched bootstrap image. It does not test anything the agent has to do."
+            exit 1
+          fi
+          echo "OK: verifier rejected the no-agent state (pytest exit $status)."

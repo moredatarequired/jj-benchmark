@@ -72,7 +72,10 @@ jobs:
             # Only the tasks this PR actually touches. If the linter itself or
             # this workflow changed, the blast radius is every task, so run all.
             changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-            if echo "$changed" | grep -qE '^(scripts/lint_tasks\.py|\.github/workflows/tasks\.yml)$'; then
+            # grep -q exits on the first match, so piping a large "$changed"
+            # into it kills echo with SIGPIPE and pipefail turns the whole
+            # pipeline non-zero -- the escalation silently never fires.
+            if grep -qE '^(scripts/lint_tasks\.py|\.github/workflows/tasks\.yml)$' <<<"$changed"; then
               echo "shared tooling changed -> running every task"
               selected=$(all_tasks)
             else
@@ -123,19 +126,34 @@ jobs:
       # tests/test.sh is not used here: it pulls uv + the pochi-verifier
       # package over the network on every run, which is far heavier than these
       # two checks need. pytest alone is enough to execute the test files.
-      # Three tasks' Dockerfiles do not install python3/pip, so install them
-      # here; apt is a no-op for the other fifty.
+      # Some tasks' Dockerfiles do not install python3/pip, so install them
+      # here; apt is a no-op for the rest.
       - name: Add pytest to the image
         run: |
           # Empty build context: this layer needs nothing from the repo, and
           # sending one keeps the step fast wherever it is run.
           mkdir -p /tmp/pytest-layer
-          docker build -t task-img-pytest -f - /tmp/pytest-layer <<'EOF'
+          # Two images end on a `USER user` directive, which this derived layer
+          # inherits: apt then fails as non-root ("List directory
+          # /var/lib/apt/lists/partial is missing"). Build as root and restore
+          # the image's own user at the end, so the gate steps run as the user
+          # the image ships rather than as root. --break-system-packages is
+          # PEP 668 fallout and only exists on newer pip, so probe for it.
+          orig_user=$(docker image inspect task-img --format '{{.Config.User}}')
+          orig_user=${orig_user:-root}
+          docker build -t task-img-pytest --build-arg ORIG_USER="$orig_user" -f - /tmp/pytest-layer <<'EOF'
           FROM task-img
+          USER root
           RUN apt-get update \
            && apt-get install -y --no-install-recommends python3 python3-pip \
            && rm -rf /var/lib/apt/lists/* \
-           && python3 -m pip install --break-system-packages --no-cache-dir pytest
+           && if python3 -m pip install --help | grep -q -- --break-system-packages; then \
+                python3 -m pip install --break-system-packages --no-cache-dir pytest; \
+              else \
+                python3 -m pip install --no-cache-dir pytest; \
+              fi
+          ARG ORIG_USER
+          USER ${ORIG_USER}
           EOF
 
       # The tests address absolute paths inside the image (/home/user/repo),

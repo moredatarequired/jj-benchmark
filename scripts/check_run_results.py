@@ -92,20 +92,42 @@ class Trial:
         return "-" if self.reward is None else f"{self.reward:g}"
 
 
+def is_trial_result(path: Path) -> bool:
+    """True if this result.json is a trial's, not a job's.
+
+    Harbor writes a result.json at the job root too, holding only aggregate
+    counters (`n_total_trials`, `stats`). It has no verifier section, so
+    treating it as a trial reports the whole job as one errored trial and hides
+    the real ones. A trial's result.json always names its trial.
+    """
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        # Unreadable or truncated: let classify() report it properly.
+        return True
+    if not isinstance(data, dict):
+        return True
+    return "trial_name" in data or "verifier_result" in data
+
+
 def find_trials(root: Path) -> list[Path]:
     """Every trial directory at or under `root`.
 
-    A trial is a directory holding a result.json, or -- so that a trial which
-    died before writing one is counted rather than silently skipped -- one
-    holding a verifier/ directory. Walking rather than globbing a fixed depth
-    is what lets the same command take a single job, the jobs/ root, or a run
-    directory that nests them.
+    A trial is a directory holding a trial-shaped result.json, or -- so that a
+    trial which died before writing one is counted rather than silently
+    skipped -- one holding a verifier/ directory. Walking rather than globbing
+    a fixed depth is what lets the same command take a single job, the jobs/
+    root, or a run directory that nests them.
     """
     if not root.is_dir():
         return []
-    if (root / "result.json").is_file():
+    if (root / "result.json").is_file() and is_trial_result(root / "result.json"):
         return [root]
-    found = {p.parent for p in root.rglob("result.json") if p.is_file()}
+    found = {
+        p.parent
+        for p in root.rglob("result.json")
+        if p.is_file() and is_trial_result(p)
+    }
     found |= {p.parent for p in root.rglob("verifier") if p.is_dir()}
     return sorted(found)
 

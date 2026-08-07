@@ -120,47 +120,53 @@ jobs:
       - name: Build task environment
         run: docker build -t task-img tasks/${{ matrix.task }}/environment
 
-      # tests/test.sh is not used here: it pulls uv + the pochi-verifier
-      # package over the network on every run, which is far heavier than these
-      # two checks need. pytest alone is enough to execute the test files.
-      # Three tasks' Dockerfiles do not install python3/pip, so install them
-      # here; apt is a no-op for the other fifty.
-      - name: Add pytest to the image
-        run: |
-          # Empty build context: this layer needs nothing from the repo, and
-          # sending one keeps the step fast wherever it is run.
-          mkdir -p /tmp/pytest-layer
-          docker build -t task-img-pytest -f - /tmp/pytest-layer <<'EOF'
-          FROM task-img
-          RUN apt-get update \
-           && apt-get install -y --no-install-recommends python3 python3-pip \
-           && rm -rf /var/lib/apt/lists/* \
-           && python3 -m pip install --break-system-packages --no-cache-dir pytest
-          EOF
-
       # The tests address absolute paths inside the image (/home/user/repo),
       # so mount only the test file in and let it look at the real container.
+      # pytest comes from the image itself now, so there is no extra layer to
+      # build and nothing to fetch.
       - name: Bootstrap check - test_initial_state.py must PASS
         run: |
-          docker run --rm \
+          docker run --rm --network none \
             -v "$PWD/tasks/${{ matrix.task }}/bootstrap/test_initial_state.py:/verify/test_initial_state.py:ro" \
-            task-img-pytest \
+            task-img \
             python3 -m pytest /verify/test_initial_state.py -rA
 
       # The point of the whole workflow. No agent has run, so the verifier is
       # looking at the untouched bootstrap state and MUST reject it. If it
       # passes, the task scores every model 100% while measuring nothing.
-      - name: Vacuity check - test_final_state.py must FAIL with no agent
+      #
+      # This drives tests/test.sh, the same entry point harbor copies to
+      # /tests/test.sh and executes, rather than calling pytest directly -- so
+      # a break in the script itself is caught here too. --network none is what
+      # the sweep does as well ([verifier] network_mode = "no-network" in
+      # task.toml); if verification ever regrows a network dependency, this
+      # step fails instead of quietly working in CI and flaking in the sweep.
+      #
+      # test.sh exits 0 whether the tests passed or failed -- harbor reads the
+      # verdict out of /logs/verifier/reward.txt -- so that is what we assert
+      # on. A missing reward.txt means the script never got that far.
+      - name: Vacuity check - the verifier must FAIL with no agent
         run: |
-          set +e
-          docker run --rm \
-            -v "$PWD/tasks/${{ matrix.task }}/tests/test_final_state.py:/verify/test_final_state.py:ro" \
-            task-img-pytest \
-            python3 -m pytest /verify/test_final_state.py -rA
-          status=$?
-          set -e
-          if [ $status -eq 0 ]; then
+          logs=$(mktemp -d)
+          # Two task images run as an unprivileged user, so /logs must be
+          # writable by anyone.
+          chmod 777 "$logs"
+          docker run --rm --network none \
+            -v "$PWD/tasks/${{ matrix.task }}/tests:/tests:ro" \
+            -v "$logs:/logs" \
+            task-img \
+            bash /tests/test.sh
+          if [ ! -f "$logs/verifier/reward.txt" ]; then
+            echo "::error title=Verifier did not run::tasks/${{ matrix.task }}/tests/test.sh produced no /logs/verifier/reward.txt."
+            exit 1
+          fi
+          if [ ! -f "$logs/verifier/ctrf.json" ]; then
+            echo "::error title=No CTRF report::tasks/${{ matrix.task }}/tests/test.sh produced no /logs/verifier/ctrf.json, so a sweep would score this task 0 with no error."
+            exit 1
+          fi
+          reward=$(cat "$logs/verifier/reward.txt")
+          if [ "$reward" != "0" ]; then
             echo "::error title=Vacuous verifier::tasks/${{ matrix.task }}/tests/test_final_state.py passes on the untouched bootstrap image. It does not test anything the agent has to do."
             exit 1
           fi
-          echo "OK: verifier rejected the no-agent state (pytest exit $status)."
+          echo "OK: verifier rejected the no-agent state with no network (reward $reward)."

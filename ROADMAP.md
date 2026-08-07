@@ -127,15 +127,13 @@ git worktree add .worktrees/<name> -b <branch> origin/main
 **Running it locally.** Needs `DOCKER_DEFAULT_PLATFORM=linux/amd64` (x86_64 jj
 tarball), `POCHI_API_KEY=dummy` (every `task.toml` substitutes it even for other
 agents), and a memory override. `claude-code` is a built-in harbor adapter, so no
-Pochi dependency. This is the canonical invocation — use it verbatim, including
-both `--ve` flags:
+Pochi dependency. This is the canonical invocation:
 
 ```bash
 DOCKER_DEFAULT_PLATFORM=linux/amd64 POCHI_API_KEY=dummy \
 uvx --from harbor==0.20.0 harbor run \
   --agent claude-code --model claude-opus-5 --env docker \
-  --path ./tasks --override-memory-mb 2048 --n-concurrent 3 -y \
-  --ve UV_NATIVE_TLS=1 --ve UV_HTTP_TIMEOUT=300
+  --path ./tasks --override-memory-mb 2048 --n-concurrent 3 -y
 ```
 
 Then, before you believe any of the numbers:
@@ -144,29 +142,38 @@ Then, before you believe any of the numbers:
 python3 scripts/check_run_results.py jobs/<the-run-you-just-did>
 ```
 
-**Both `--ve` flags are load-bearing, and both fail silently when omitted.** Each
-task's `tests/test.sh` installs the verifier's dependencies from pypi at trial time.
-When that install fails, harbor still writes `reward: 0.0`, with `n_errors: 0` and
-`exception_stats: {}` — a broken verifier is scored exactly like a task the agent
-genuinely failed, and the run looks clean.
+**The verifier no longer touches the network, and is no longer allowed to.** Each
+task image installs `pytest==8.4.1` and `pytest-json-ctrf==0.3.5` at build time,
+`tests/test.sh` runs `python3 -m pytest` straight out of the image, and every
+`task.toml` sets `[verifier] network_mode = "no-network"`, which the docker
+environment enforces by denying the container egress for the verify phase.
 
-- Without `--ve UV_NATIVE_TLS=1`, uv rejects the TLS chain on every trial and
-  **every task scores 0** — a whole sweep of zeros that reads as a catastrophically
-  bad model rather than as a broken run.
-- Without `--ve UV_HTTP_TIMEOUT=300`, uv gives up on a read after 30s, and the pypi
-  path out of these containers stalls past that intermittently. This does not fail
-  the run, it **loses tasks at random** — two trials of one haiku sweep went this
-  way. 120s still timed out once (after burning 546s in retries); 300s passed in 50s.
+This closes a failure mode that had no error signal. `tests/test.sh` used to bootstrap
+`uv` from astral.sh and resolve three packages from pypi on every trial. When that
+failed, harbor still wrote `reward: 0.0`, with `n_errors: 0` and `exception_stats: {}`
+— a broken verifier scored exactly like a task the agent genuinely failed, and the run
+looked clean. Two trials of one haiku sweep were lost that way; a TLS chain the
+bundled `uv` did not trust could take out a whole sweep the same way.
 
-`tests/test.sh` now also exports `UV_HTTP_TIMEOUT=300` and `UV_HTTP_RETRIES=2` as
-defaults if the caller has not set them, so a forgotten flag is no longer fatal. Pass
-the flag anyway: the in-script default is a backstop, not the contract.
+The `--ve UV_NATIVE_TLS=1` and `--ve UV_HTTP_TIMEOUT=300` flags this section used to
+insist on are therefore obsolete. `--ve` sets the *verifier's* environment
+(`harbor/cli/jobs.py` merges it into `config.verifier.env`), and nothing in the
+verifier uses `uv` any more. They are not harmful, just inert — drop them. Note this
+is a separate concern from `uv` on the machine launching `harbor`, which reads its own
+ambient environment, and from the four task images that install `uv` for the *agent*,
+which is configured through `--ae`.
 
-The reason to run `check_run_results.py` afterwards is that no flag makes this class
-of failure impossible. It asserts every trial wrote `verifier/ctrf.json` — the file
-`pytest --ctrf` produces — and reports any trial without one as `ERRORED-INFRA`
-rather than as a failure, exiting non-zero. A trial whose `verifier/test-stdout.txt`
-never reaches `test session starts` is the corroborating tell.
+The network is still needed to *build* the images: apt, the jj release tarball, and
+that pip install. That is per-image and cached, not per-trial, and a build failure is
+loud rather than silent.
+
+Keep running `check_run_results.py` afterwards. It asserts every trial wrote
+`verifier/ctrf.json` — the file `pytest --ctrf` produces — and reports any trial
+without one as `ERRORED-INFRA` rather than as a failure, exiting non-zero. A trial
+whose `verifier/test-stdout.txt` never reaches `test session starts` is the
+corroborating tell. Hermetic verification removes the biggest cause of a missing
+report; it does not make "no report" impossible, and a run with a missing report is
+still a run whose number is wrong.
 
 **The site is built from the repo.** `site/scripts/compute-tasks.ts` walks
 `jobs/*/*/result.json` at build time and reads prompts from `tasks/*/instruction.md`.

@@ -35,21 +35,31 @@ harbor run \
     --retry-include AgentTimeoutError
 ```
 
-### Required verifier environment
+### The verifier runs without network access
 
-Whatever agent and environment you run with, pass both of these to `harbor run`:
+There is no verifier environment to configure. Every task image installs
+`pytest==8.4.1` and `pytest-json-ctrf==0.3.5` at build time, `tests/test.sh` installs
+nothing, and each `task.toml` sets:
 
-```bash
---ve UV_NATIVE_TLS=1 --ve UV_HTTP_TIMEOUT=300
+```toml
+[verifier]
+network_mode = "no-network"
 ```
 
-Each task's verifier installs its own dependencies from pypi at trial time. If that
-install fails, harbor still records `reward: 0.0` with no error, so a broken verifier
-is indistinguishable from a task the agent genuinely failed. Omit `UV_NATIVE_TLS` and
-every task silently scores 0; omit the timeout and tasks are lost at random whenever
-the pypi connection stalls past uv's 30-second default. `tests/test.sh` sets the
-timeout and a retry count as defaults too, so a forgotten flag is not fatal, but the
-flags remain the supported invocation.
+so harbor denies the container egress for the whole verify phase. If verification ever
+regrows a network dependency it fails immediately and visibly, instead of working on
+your machine and flaking in a sweep.
+
+This replaces the `--ve UV_NATIVE_TLS=1 --ve UV_HTTP_TIMEOUT=300` flags this README used
+to require. Those configured `uv` inside the verifier container, and nothing in the
+verifier uses `uv` any more, so both are now no-ops — drop them. `--ve` sets the
+*verifier's* environment (`harbor/cli/jobs.py`), so it never affected anything else:
+uv on the machine launching `harbor` reads its own ambient environment, and the four
+task images that install `uv` for the *agent* to use are configured through `--ae`.
+
+The network is still used to *build* the images — apt, the jj release tarball, and the
+pip install above. That is a build-time cost paid once per image, not per trial, and a
+build failure is loud.
 
 After every run, audit the output before trusting the numbers:
 

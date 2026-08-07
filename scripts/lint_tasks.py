@@ -9,6 +9,7 @@ run has burned an hour of GPU-free-but-not-free CI time:
   * a task.toml that does not parse, or that omits a timeout / resource knob
   * an instruction.md missing the sections agents are told to rely on
   * a Dockerfile pinning a different jj version from every other task
+  * a Dockerfile that does not bake in the pinned verifier dependencies
   * a tests/test.sh that has drifted out of sync with its 52 identical siblings
 
 It also prints an inventory of things that are *policy*, not correctness --
@@ -57,6 +58,12 @@ REQUIRED_INSTRUCTION_SECTIONS = ("## Requirements", "## Background")
 
 # e.g. "jj-v0.38.0-x86_64-unknown-linux-musl.tar.gz" -> "0.38.0"
 JJ_VERSION_RE = re.compile(r"jj-v(\d+\.\d+\.\d+)")
+
+# tests/test.sh runs `python3 -m pytest --ctrf ...` and installs nothing, so
+# every image has to carry these already. The pins live in 53 Dockerfiles;
+# this check is what stops one of them being bumped or dropped on its own and
+# only surfacing as a task that mysteriously errors mid-sweep.
+VERIFIER_DEPS = ("pytest==8.4.1", "pytest-json-ctrf==0.3.5")
 
 
 class Findings:
@@ -131,6 +138,14 @@ def check_dockerfile(task: str, task_dir: Path, findings: Findings) -> str | Non
 
     if not re.search(r"^\s*FROM\s+\S+", text, re.MULTILINE | re.IGNORECASE):
         findings.fail(task, "environment/Dockerfile has no FROM instruction")
+
+    for dep in VERIFIER_DEPS:
+        if dep not in text:
+            findings.fail(
+                task,
+                f"environment/Dockerfile does not install {dep}; tests/test.sh "
+                "runs pytest straight out of the image and installs nothing",
+            )
 
     versions = set(JJ_VERSION_RE.findall(text))
     if not versions:

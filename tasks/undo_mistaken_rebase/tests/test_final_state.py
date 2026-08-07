@@ -33,13 +33,23 @@ def test_rebase_was_performed():
 
 
 def test_undo_came_after_rebase():
-    """`jj undo` must have reverted the rebase, not run before it."""
+    """Something must have reverted the rebase, not just run before it.
+
+    `jj undo` and `jj op revert <rebase-op-id>` are both correct ways to
+    revert a completed operation, and jj's own op log tells them apart only
+    by description text ("undo operation ..." vs "revert operation ...").
+    Pinning the literal command name would mark a correct solve wrong just
+    because it took the other equally-valid path, so check for either.
+    """
     ops = op_descriptions()  # newest first
-    undo = next((i for i, op in enumerate(ops) if "undo" in op.lower()), None)
+    undo = next(
+        (i for i, op in enumerate(ops) if "undo" in op.lower() or "revert" in op.lower()),
+        None,
+    )
     rebase = next((i for i, op in enumerate(ops) if "rebase" in op.lower()), None)
-    assert undo is not None, f"No undo operation found in the operation log: {ops}"
+    assert undo is not None, f"No undo/revert operation found in the operation log: {ops}"
     assert rebase is not None, f"No rebase operation found in the operation log: {ops}"
-    assert undo < rebase, f"The undo predates the rebase, so it did not revert it: {ops}"
+    assert undo < rebase, f"The undo/revert predates the rebase, so it did not revert it: {ops}"
 
 
 def test_commits_survived():

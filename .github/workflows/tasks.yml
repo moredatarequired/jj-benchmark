@@ -72,7 +72,10 @@ jobs:
             # Only the tasks this PR actually touches. If the linter itself or
             # this workflow changed, the blast radius is every task, so run all.
             changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-            if echo "$changed" | grep -qE '^(scripts/lint_tasks\.py|\.github/workflows/tasks\.yml)$'; then
+            # grep -q exits on the first match, so piping a large "$changed"
+            # into it kills echo with SIGPIPE and pipefail turns the whole
+            # pipeline non-zero -- the escalation silently never fires.
+            if grep -qE '^(scripts/lint_tasks\.py|\.github/workflows/tasks\.yml)$' <<<"$changed"; then
               echo "shared tooling changed -> running every task"
               selected=$(all_tasks)
             else

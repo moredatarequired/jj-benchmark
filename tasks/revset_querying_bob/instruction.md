@@ -5,9 +5,9 @@ You are working in a Jujutsu (`jj`) repository. Jujutsu has a powerful revset la
 
 ## Requirements
 1. Set your `jj` configuration: user name to `Bob` and email to `bob@example.com`.
-2. In the repository at `/home/user/repo`, create a new bookmark named `bob-feature` on the current working copy.
+2. In the repository at `/home/user/repo`, start a new commit (e.g., using `jj new`) and create a new bookmark named `bob-feature` on it. A commit's author is fixed when the commit is created, so the commit that already existed before step 1 will not count as authored by `Bob`.
 3. Create a new file `bob.txt` with the content `bob's work`.
-4. Describe the current working copy (commit) with the message `Bob's first commit`.
+4. Describe that commit with the message `Bob's first commit`.
 5. Create a new commit on top of it (e.g., using `jj new`), add `more work` to `bob.txt`, and describe this new commit with `Bob's second commit`.
 6. Use a `jj` revset query to find all commits authored by `Bob` that are not reachable from the `main` bookmark but are ancestors of the current working copy `@`.
 7. Save the **Change IDs** (not commit IDs) of these commits into a file named `bob_commits.txt` in the root of the repository (`/home/user/repo/bob_commits.txt`), one ID per line.

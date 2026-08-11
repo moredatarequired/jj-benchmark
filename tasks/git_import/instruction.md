@@ -11,3 +11,4 @@ Your task is to run the specific `jj` command to explicitly update the Jujutsu r
 ## Constraints
 - Project path: `/home/user/project`
 - You must use the `jj git` command family to perform the import.
+- Do NOT run any other `jj` commands (like `jj log` or `jj status`) that would trigger an automatic import implicitly.

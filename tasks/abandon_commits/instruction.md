@@ -1,7 +1,7 @@
 # Abandoning Commits in Jujutsu
 
 ## Background
-You are working in a `jj` repository and have created a stack of commits. You've realized that some of the intermediate commits are false starts and need to be removed from the history. `jj abandon` allows you to discard revisions and automatically rebases any descendants.
+You are working in a `jj` repository and have created a stack of commits. You've realized that some of the intermediate commits are false starts and need to be removed from the history. Removing a commit from the middle of a stack leaves its descendants in place, rebased onto the removed commit's parent.
 
 ## Repository State
 - `commit A`: adds `a.txt`. Bookmark: `feature-a`.

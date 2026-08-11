@@ -10,8 +10,8 @@ Jujutsu (`jj`) provides a powerful functional templating language to customize t
 4. Create a new commit with the description "Second commit".
 5. Configure the repository-level `jj` config (`/home/user/myproject/.jj/repo/config.toml`) to define a custom template alias named `'custom_log'` under `[template-aliases]`.
    The alias should format a commit as: `<short_commit_id> | <author_email_local_part> | <first_line_of_description>\n`
-   (e.g., `12345678 | test | Initial commit\n`).
-   *Hint: Use `commit_id.short()`, `author.email().local()`, and `description.first_line()` functions.*
+   where `<short_commit_id>` is the commit id abbreviated to exactly 12 characters
+   (e.g., `1234567890ab | test | Initial commit\n`, and the root commit therefore renders as `000000000000 |  |`).
 6. Configure the default log template in the same config file to use your `custom_log` alias (under `[templates]` set `log = 'custom_log'`).
 
 ## Constraints

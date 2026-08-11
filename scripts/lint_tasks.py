@@ -14,9 +14,9 @@ run has burned an hour of GPU-free-but-not-free CI time:
 
 It also prints an inventory of things that are *policy*, not correctness --
 which instruction files use "## Implementation" vs "## Implementation Guide"
-vs neither, and the allow_internet split. Those are not failures, but printing
-them means a future change to the convention is visible in the CI log as a
-diff in the numbers rather than silently spreading.
+vs neither, and the per-phase network_mode split. Those are not failures, but
+printing them means a future change to the convention is visible in the CI log
+as a diff in the numbers rather than silently spreading.
 
 Exit status is 0 if every hard check passed, 1 otherwise.
 """
@@ -50,8 +50,13 @@ REQUIRED_TOML_KEYS = (
     ("agent", "timeout_sec"),
     ("environment", "cpus"),
     ("environment", "memory_mb"),
-    ("environment", "allow_internet"),
+    ("environment", "network_mode"),
+    ("agent", "network_mode"),
+    ("verifier", "network_mode"),
 )
+
+# Phases whose network_mode is tallied in the inventory, in report order.
+NETWORK_MODE_PHASES = ("environment", "agent", "verifier")
 
 # Sections instructions must carry. Agents are prompted against these.
 REQUIRED_INSTRUCTION_SECTIONS = ("## Requirements", "## Background")
@@ -114,6 +119,18 @@ def check_task_toml(task: str, task_dir: Path, findings: Findings) -> dict:
             continue
         if key not in section:
             findings.fail(task, f"task.toml is missing [{table}] {key}")
+
+    # An allowlist with nothing on it is a silent no-network: the mode says
+    # "some egress is expected" while the effective policy denies all of it.
+    agent = config.get("agent")
+    if isinstance(agent, dict) and agent.get("network_mode") == "allowlist":
+        hosts = agent.get("allowed_hosts")
+        if not isinstance(hosts, list) or not hosts:
+            findings.fail(
+                task,
+                'task.toml sets [agent] network_mode = "allowlist" but '
+                "[agent] allowed_hosts is missing or empty",
+            )
     return config
 
 
@@ -198,7 +215,7 @@ def check_test_sh_identical(digests: dict[str, str], findings: Findings) -> None
 
 def print_inventory(
     instruction_sections: dict[str, str],
-    allow_internet: Counter,
+    network_modes: dict[str, Counter],
     jj_version: str | None,
     test_sh_uniform: bool,
 ) -> None:
@@ -218,12 +235,14 @@ def print_inventory(
         listed = ", ".join(tasks) if tasks else "-"
         print(f"  {kind:<26} {len(tasks):>5}  {listed}")
 
-    print("\nenvironment.allow_internet:")
-    for value in (True, False):
-        print(f"  {str(value):<26} {allow_internet.get(value, 0):>5}")
-    other = {k: v for k, v in allow_internet.items() if k not in (True, False)}
-    if other:
-        print(f"  {'(non-boolean)':<26} {sum(other.values()):>5}  {other}")
+    for phase in NETWORK_MODE_PHASES:
+        counts = network_modes.get(phase, Counter())
+        print(f"\n{phase}.network_mode:")
+        if not counts:
+            print(f"  {'(unset)':<26} {0:>5}")
+            continue
+        for value, count in sorted(counts.items(), key=lambda kv: (-kv[1], str(kv[0]))):
+            print(f"  {str(value):<26} {count:>5}")
 
     print("\npinned jj version: " + (f"v{jj_version}" if jj_version else "(unknown)"))
     print(
@@ -246,16 +265,17 @@ def main() -> int:
     pinned_jj: dict[str, str] = {}
     test_sh_digests: dict[str, str] = {}
     instruction_sections: dict[str, str] = {}
-    allow_internet: Counter = Counter()
+    network_modes: dict[str, Counter] = {p: Counter() for p in NETWORK_MODE_PHASES}
 
     for task_dir in task_dirs:
         task = task_dir.name
         check_required_files(task, task_dir, findings)
 
         config = check_task_toml(task, task_dir, findings)
-        env = config.get("environment")
-        if isinstance(env, dict) and "allow_internet" in env:
-            allow_internet[env["allow_internet"]] += 1
+        for phase in NETWORK_MODE_PHASES:
+            section = config.get(phase)
+            if isinstance(section, dict) and "network_mode" in section:
+                network_modes[phase][section["network_mode"]] += 1
 
         text = check_instruction(task, task_dir, findings)
         if "## Implementation Guide" in text:
@@ -279,7 +299,7 @@ def main() -> int:
     print(f"Linted {len(task_dirs)} task(s) under {TASKS_DIR.relative_to(REPO_ROOT)}/")
     print_inventory(
         instruction_sections,
-        allow_internet,
+        network_modes,
         consensus_jj,
         test_sh_uniform=len(set(test_sh_digests.values())) <= 1,
     )

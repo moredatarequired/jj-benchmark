@@ -9,7 +9,7 @@ You are working in a Jujutsu (`jj`) repository at `/home/user/repo`. The file `c
 
 ## Implementation Guide
 1. Change directory to `/home/user/repo`.
-2. Use `jj` commands (e.g., `jj restore -c @- config.txt` or `jj cat -r @- config.txt > config.txt`) to overwrite the current `config.txt` with its parent's version.
+2. Use `jj` commands (e.g., `jj restore --from @- config.txt` or `jj file show -r @- config.txt > config.txt`) to overwrite the current `config.txt` with its parent's version.
 
 ## Constraints
 - Project path: `/home/user/repo`

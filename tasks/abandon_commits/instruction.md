@@ -10,7 +10,7 @@ You are working in a `jj` repository and have created a stack of commits. You've
 - `commit D`: adds `d.txt`. Working copy is here.
 
 ## Requirements
-1. Abandon the commit pointed to by the `experiment` bookmark, but **retain** the bookmark (it should automatically move to the abandoned commit's parent).
+1. Abandon the commit pointed to by the `experiment` bookmark, but **retain** the bookmark: afterwards it must still exist and point at the abandoned commit's parent.
 2. Abandon the commit pointed to by the `draft` bookmark. Do **not** retain this bookmark (it should be deleted).
 3. Set the description of the current working-copy commit to `cleanup complete`.
 

@@ -7,10 +7,6 @@ You are working in a Jujutsu (`jj`) repository at `/home/user/repo`. The file `c
 - Restore the contents of `/home/user/repo/config.txt` to match its contents in the parent revision (`@-`).
 - Do not create a new commit or change the parent commit; just update the working copy of the file.
 
-## Implementation Guide
-1. Change directory to `/home/user/repo`.
-2. Use `jj` commands (e.g., `jj restore --from @- config.txt` or `jj file show -r @- config.txt > config.txt`) to overwrite the current `config.txt` with its parent's version.
-
 ## Constraints
 - Project path: `/home/user/repo`
 - The repository must remain a valid `jj` repository.

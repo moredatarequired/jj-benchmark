@@ -9,10 +9,6 @@ You are working in a Jujutsu repository and have developed a feature on one bran
 - You need to duplicate the commit pointed to by `feature-a` so that the new duplicated commit is placed directly on top of `feature-b` (i.e., its parent is `feature-b`).
 - Do not modify the original `feature-a` commit.
 
-## Implementation Guide
-1. Navigate to the repository at `/home/user/repo`.
-2. Use the `jj duplicate` command to copy the commit at `feature-a` and set its destination to `feature-b`.
-
 ## Constraints
 - Project path: `/home/user/repo`
 - Use only `jj` commands.

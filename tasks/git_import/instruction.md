@@ -8,10 +8,6 @@ You have a colocated Jujutsu repository at `/home/user/project`.
 A new commit was just added to the underlying Git repository via the `git` CLI.
 Your task is to run the specific `jj` command to explicitly update the Jujutsu repo with changes made in the underlying Git repo.
 
-## Implementation
-1. Run the `jj` command that explicitly imports changes from the Git repository.
-2. Do NOT run any other `jj` commands (like `jj log`, `jj status`, etc.) that would trigger an automatic import implicitly.
-
 ## Constraints
 - Project path: `/home/user/project`
 - You must use the `jj git` command family to perform the import.

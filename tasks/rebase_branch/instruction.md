@@ -8,19 +8,12 @@ Jujutsu (`jj`) is a Git-compatible VCS that treats the working copy as a permane
 - The `main` bookmark has been updated with a new commit modifying `data.txt`.
 - You have a bookmark `feature-branch` with 2 commits. The first commit modifies `data.txt` in a way that conflicts with `main`.
 - Rebase `feature-branch` onto `main`.
-- Resolve the conflict in `data.txt` by keeping both lines (the line from `main` followed by the line from `feature-branch`).
+- Resolve the conflict in `data.txt` by keeping both lines (the line from `main` followed by the line from `feature-branch`), so that the final file contains exactly:
+  ```
+  Line from main
+  Line from feature
+  ```
 - The `feature-branch` bookmark must point to the head of the rebased commits.
-
-## Implementation
-1. Navigate to `/home/user/repo`.
-2. Rebase the commits of `feature-branch` onto `main`.
-3. Identify the conflicted file (`data.txt`).
-4. Edit `data.txt` to resolve the conflict. The final file should contain:
-   ```
-   Line from main
-   Line from feature
-   ```
-5. Verify the conflict is resolved. You can use `jj resolve` to mark it as resolved or edit the file directly.
 
 ## Constraints
 - Project path: `/home/user/repo`

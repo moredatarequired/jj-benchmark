@@ -8,12 +8,6 @@ You are working on a Python project using `jj`. You have made several changes to
 - You can achieve this using `jj restore -i` if your environment supports interactive terminal tools, or you can simply edit `/home/user/myproject/main.py` directly to remove `foo()`.
 - The repository must remain intact and the working copy should reflect this specific state.
 
-## Implementation Guide
-1. Navigate to `/home/user/myproject`.
-2. Inspect the changes in the working copy using `jj diff`.
-3. Either use `jj restore -i` (if you can use interactive prompts) or directly edit `main.py` to remove the `foo()` function.
-4. Verify the working copy diff using `jj diff` to ensure only `bar()` is being added compared to the parent.
-
 ## Constraints
 - Project path: `/home/user/myproject`
 - The parent commit must still contain only `hello()`.

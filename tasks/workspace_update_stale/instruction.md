@@ -9,8 +9,5 @@ You are working in a `jj` repository at `/home/user/myproject`. Another user (or
 3. Modify `config.json` by changing the `"status"` field from `"pending"` to `"active"`.
 4. Commit the change with the exact description `"Activate config"`.
 
-## Implementation
+## Constraints
 - Project path: `/home/user/myproject`
-- Use `jj workspace update-stale` to update the stale workspace.
-- Use standard text editing tools to modify `config.json`.
-- Use `jj commit -m "Activate config"` to commit the change.

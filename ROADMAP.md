@@ -46,8 +46,10 @@ signal, and it's the one to iterate against.
 
 The tasks are easy for two specific reasons, both fixable:
 
-- Every `instruction.md` has an `## Implementation` section listing the commands to
-  run. A jj skill cannot help with a prompt that already contains the answer.
+- 41 of the 53 `instruction.md` files had an `## Implementation` section listing the
+  commands to run. A jj skill cannot help with a prompt that already contains the
+  answer. Those sections are now deleted (see "What's done"), but 21 tasks still name
+  their answer command in Background or Requirements.
 - All 53 tasks set `allow_internet = true`, so the agent can read the jj docs — which
   is the thing the skill is supposed to supply. The benchmark competes with what we're
   trying to measure.
@@ -63,6 +65,7 @@ was 87–98%, about six tasks of resolution across the whole leaderboard.
 | #2 | Real state assertions for `undo_mistaken_rebase`. nop agent scores 0.0, real agent 1.0 |
 | #3 | Dropped the Pages deploy workflow — we're not publishing a leaderboard |
 | #4 | `rebase_branch` template separator. 0/8 across every model → 3/3 at k=3 |
+| #5 | Deleted the `## Implementation` section from all 41 tasks that had one. Task data the tests assert on was migrated into Requirements first |
 | in flight | Shared base image so harbor stops reinstalling Claude Code per trial |
 
 Baseline job results for all three models are in `/tmp/jjjobs/` and not committed yet —
@@ -84,10 +87,11 @@ slow to tune skill variants against. Two causes, both silly:
 Target is 2–4 minutes per sweep. Separately, all 53 Dockerfiles hardcode the x86_64 jj
 tarball, so everything runs under Rosetta on Apple Silicon; jj ships an aarch64 build.
 
-**2. Create headroom.** In order of leverage: set `allow_internet = false`; delete the
-`## Implementation` section from all 53 instructions, keeping Requirements and
-Constraints since those are what the tests assert; award partial credit from the CTRF
-per-test results instead of collapsing pytest to 1 or 0.
+**2. Create headroom.** In order of leverage: set `allow_internet = false`; strip the
+remaining command names out of the 21 instructions that still give the answer away in
+Background or Requirements (the `## Implementation` sections themselves are already
+gone); award partial credit from the CTRF per-test results instead of collapsing
+pytest to 1 or 0.
 
 **3. Re-baseline** all three models. If a frontier model still scores near 53/53, the
 tasks are too easy to measure skills with regardless of scoring, and the answer is new

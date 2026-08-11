@@ -6,9 +6,5 @@ In Jujutsu (`jj`), every change in the working copy is automatically recorded as
 ## Requirements
 - Update the change description of the current working copy commit to be exactly `"feat: add new feature"`.
 
-## Implementation
-1. Navigate to the project directory `/home/user/myproject`.
-2. Use the `jj describe -m` command to set the message.
-
 ## Output
 - Project path: `/home/user/myproject`

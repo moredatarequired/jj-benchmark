@@ -10,13 +10,6 @@
 - Observe that Commits 1, 2, and 3 are automatically rebased.
 - You must end up with the same 4 commit structure, but with the modified base.
 
-## Implementation
-1. Go to `/home/user/repo`.
-2. Identify the change ID of the "Base" commit.
-3. Run `jj edit <change_id>` to edit it.
-4. Change the content of `base.txt` to `new`.
-5. Run `jj new` to finalize the edit, or simply check the status.
-
 ## Output
 - Project path: `/home/user/repo`
 - Start command: `cd /home/user/repo`

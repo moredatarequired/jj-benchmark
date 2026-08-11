@@ -11,11 +11,6 @@ Your task is to:
 2. Create a bookmark named `my-feature` for your current working copy.
 3. Push the `my-feature` bookmark to the `origin` remote.
 
-## Implementation Guide
-1. Use `jj describe -m "Your message"` to add a description to your current commit.
-2. Use `jj bookmark create my-feature` to create the bookmark.
-3. Use `jj git push --bookmark my-feature` to push the bookmark to the remote.
-
 ## Constraints
 - The repository path is `/home/user/repo`.
 - The remote name is `origin`.

@@ -9,11 +9,6 @@ In Jujutsu (`jj`), conflicts are first-class citizens and can be committed and p
 - Resolve the conflict in `file.txt` so that its content is exactly `A and B` (with a single trailing newline).
 - Ensure that `jj` recognizes the conflict as resolved (i.e., `jj status` reports no unresolved conflicts).
 
-## Implementation
-1. Navigate to the project directory `/home/user/myproject`.
-2. Open `file.txt` and replace its entire contents (including the conflict markers) with exactly `A and B`.
-3. Run `jj status` to verify that the conflict is resolved and no warnings about unresolved conflicts remain.
-
 ## Constraints
 - Project path: `/home/user/myproject`
 - Do not create new commits or branches; just resolve the conflict in the current working copy.

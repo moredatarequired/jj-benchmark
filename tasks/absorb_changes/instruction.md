@@ -12,11 +12,5 @@ While testing the latest state, you found bugs in both features and fixed them d
 - Distribute the changes in your working copy to the nearest mutable ancestors using the appropriate `jj` command.
 - After the operation, the working copy (`@`) should be empty (no changes).
 
-## Implementation Guide
-1. Navigate to `/home/user/project`.
-2. Run the `jj absorb` command to automatically move the changes from the working copy into the appropriate ancestor commits.
-3. Verify that the changes to `feature_a.py` were absorbed into the commit that originally modified `feature_a.py`.
-4. Verify that the changes to `feature_b.py` were absorbed into the commit that originally modified `feature_b.py`.
-
 ## Constraints
 - Project path: `/home/user/project`

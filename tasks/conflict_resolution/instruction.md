@@ -9,13 +9,6 @@ Jujutsu (`jj`) treats conflicts as first-class objects, meaning a commit with co
 3. Resolve the conflict in `file.txt` so that the conflicting line reads `Feature A and Feature B`.
 4. Verify the conflict is resolved.
 
-## Implementation
-1. Navigate to the project directory: `cd /home/user/myproject`.
-2. Rebase `feature-b` onto `feature-a`: `jj rebase -b feature-b -d feature-a`.
-3. Open `file.txt` in a text editor.
-4. You will see conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`). Edit the file to replace the entire conflict block with the text `Feature A and Feature B`.
-5. Save the file. `jj` will automatically detect the resolution in the working copy.
-
 ## Constraints
 - Project path: `/home/user/myproject`
 - The final `file.txt` should contain exactly three lines:

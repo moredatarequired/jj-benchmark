@@ -13,11 +13,6 @@ Your task is to create a linear chain of 3 commits starting from the current wor
 
 At the end of the task, your working copy should be on the commit with description `commit 3`.
 
-## Implementation
-1. In `/home/user/myproject`, run `jj describe -m "commit 1"` and `echo first > file1.txt`.
-2. Run `jj new -m "commit 2"` and `echo second > file2.txt`.
-3. Run `jj new -m "commit 3"` and `echo third > file3.txt`.
-
 ## Constraints
 - Project path: `/home/user/myproject`
 - Start command: `cd /home/user/myproject`

@@ -5,7 +5,7 @@ You are working in a Jujutsu repository and have developed a feature on one bran
 
 ## Requirements
 - You have a Jujutsu repository located at `/home/user/repo`.
-- There are two branches (bookmarks): `feature-a` and `feature-b`.
+- Among the repository's bookmarks are `feature-a` and `feature-b`.
 - You need to duplicate the commit pointed to by `feature-a` so that the new duplicated commit is placed directly on top of `feature-b` (i.e., its parent is `feature-b`).
 - Do not modify the original `feature-a` commit.
 

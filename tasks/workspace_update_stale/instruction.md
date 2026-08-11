@@ -1,7 +1,7 @@
 # Update Stale Workspace
 
 ## Background
-You are working in a `jj` repository at `/home/user/myproject`. Another user (or process) recently modified the repository from another workspace (`/home/user/workspace_b`), which caused your current workspace's working copy to become stale. A stale working copy means the `jj` operation log has advanced, but your working copy files haven't been updated to match the new state.
+You are working in a `jj` repository at `/home/user/myproject`. Another user (or process) recently modified the repository from another workspace (`/home/user/workspace_b`), which caused your current workspace's working copy to become stale. A stale working copy means the commit your workspace is sitting on was changed by an operation run elsewhere, so your working copy files no longer match it.
 
 ## Requirements
 1. Update the stale working copy in `/home/user/myproject` so that it is no longer stale.

@@ -30,8 +30,11 @@ RUN curl -fsSL https://github.com/jj-vcs/jj/releases/download/v0.38.0/jj-v0.38.0
 RUN mkdir -p /home/user && chmod 0755 /home/user
 
 LABEL Author="any-task-builder"
-LABEL Description="jj project with an initial Python file and some working copy changes."
+LABEL Description="jj project whose middle commit deleted a still-needed file by mistake."
 
+# The three files of the initial commit. Written by three here-documents queued
+# on one command line: the shell reads their bodies in the order the redirects
+# appear, so main.py, legacy.py and settings.toml land in that order.
 RUN mkdir -p /home/user/myproject && \
     cd /home/user/myproject && \
     git init && \
@@ -40,26 +43,60 @@ RUN mkdir -p /home/user/myproject && \
     jj git init --colocate && \
     jj config set --user user.name "Your Name" && \
     jj config set --user user.email "your@email.com" && \
-    cat >main.py <<'EOF'
-def hello():
-    print("Hello")
-EOF
+    cat >main.py <<'MAIN' && cat >legacy.py <<'LEGACY' && cat >settings.toml <<'SETTINGS'
+from legacy import old_helper
+
+
+def main():
+    print(old_helper())
+MAIN
+def old_helper():
+    return "legacy"
+LEGACY
+[server]
+host = "127.0.0.1"
+port = 8080
+
+[logging]
+level = "info"
+SETTINGS
+
+# The commit at the heart of the task: dropping the legacy module was intended,
+# deleting settings.toml along with it was not.
 RUN cd /home/user/myproject && \
     jj commit -m "Initial commit" && \
-    cat >main.py <<'EOF'
-def hello():
-    print("Hello")
+    rm legacy.py settings.toml && \
+    cat >main.py <<'MAIN'
+def main():
+    print("running")
+MAIN
 
-def foo():
-    print("foo")
+# A descendant commit, so that fixing the commit above has to carry it along.
+RUN cd /home/user/myproject && \
+    jj commit -m "remove legacy module" && \
+    cat >main.py <<'MAIN'
+import logging
 
-def bar():
-    print("bar")
-EOF
+
+def main():
+    logging.info("start")
+    print("running")
+MAIN
+
+# Uncommitted work in the working copy, which must survive the fix.
+RUN cd /home/user/myproject && \
+    jj commit -m "add logging" && \
+    cat >notes.txt <<'NOTES'
+todo: review the release checklist
+NOTES
 
 # Container contents:
 #   - jj installed in /usr/local/bin/jj.
-#   - /home/user/myproject  — jj project with initial python file
-#   - main.py with hello(), foo(), and bar() in the working copy
+#   - /home/user/myproject — jj repo with four commits above the root:
+#       Initial commit        (main.py, legacy.py, settings.toml)
+#       remove legacy module  (deletes legacy.py and, by mistake, settings.toml;
+#                              rewrites main.py)
+#       add logging           (rewrites main.py)
+#       @                     (no description, adds notes.txt)
 
 CMD ["/bin/bash", "-c", "trap : TERM INT; sleep infinity & wait"]

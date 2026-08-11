@@ -6,8 +6,8 @@ Jujutsu (`jj`) provides a powerful functional templating language to customize t
 ## Requirements
 1. Initialize a new `jj` repository in the existing directory `/home/user/myproject`.
 2. Configure the repository's author identity: user name `Test User`, email `test@example.com`.
-3. Create an initial commit with description "Initial commit".
-4. Create a new commit with the description "Second commit".
+3. Build the history so that the finished repository holds exactly three commits: the root commit, a commit described `Initial commit` directly above it, and a commit described `Second commit` directly above that. Both described commits must be authored by the identity from requirement 2.
+4. The `Second commit` commit must be the working copy itself. Do not leave any further commit above it — not even an empty, undescribed one — so the default log listing shows exactly those three commits, newest first: `Second commit`, then `Initial commit`, then the root commit.
 5. Configure the repository-level `jj` config to define a custom template alias named `'custom_log'` under `[template-aliases]`.
    The alias should format a commit as: `<short_commit_id> | <author_email_local_part> | <first_line_of_description>\n`
    where `<short_commit_id>` is the commit id abbreviated to exactly 12 characters

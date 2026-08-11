@@ -32,6 +32,38 @@ RUN mkdir -p /home/user && chmod 0755 /home/user
 LABEL Author="any-task-builder"
 LABEL Description="jj task environment with a range of commits to be squashed."
 
+# Combining several commits into one is a command that needs a description it
+# was not given, so jj opens an editor pre-filled with the destination's
+# description followed by each source's. This image ships no editor, and the
+# agent's shell has no TTY, so an interactive editor cannot work here even if
+# one were installed: with no editor the command dies on "Failed to run editor
+# 'nano': No such file or directory", and with nano installed it dies on
+# "Standard input is not a terminal". Either way the environment, not the
+# agent, decides the task is unsolvable by its most natural form -- while
+# tests/test_final_state.py explicitly accepts the description that form
+# produces. Pointing ui.editor at `true` makes the edit step a no-op that
+# exits 0, so jj keeps the text it pre-filled (JJ: comment lines stripped) and
+# the command succeeds. This is what an EDITOR=true CI environment does. It
+# changes nothing for the forms that pass a description on the command line,
+# which keep working exactly as before.
+#
+# The value is quoted so that jj stores the *string* "true": `jj config set`
+# parses its argument as TOML, so a bare true is stored as a boolean and then
+# rejected at use time with "Invalid type or value for ui.editor".
+#
+# Config, not $JJ_EDITOR: the environment variable outranks ui.editor, so it
+# would also silently override an agent that points ui.editor at a script of
+# its own to control the combined description. A config default is overridable
+# -- by the agent's own `jj config set`, by --config, by $JJ_EDITOR -- which is
+# what a default should be.
+#
+# --user, not --repo: ui.editor is a preference of the environment rather than
+# a property of this repository, and a scratch repo the agent creates while
+# experimenting should behave the same way. Both scopes live under $HOME in jj
+# v0.38 (--repo writes $HOME/.config/jj/repos/<hash>/config.toml), so this adds
+# no assumption the bootstrap's own --repo user.name did not already make.
+RUN jj config set --user ui.editor '"true"'
+
 RUN mkdir -p /home/user/myproject && \
     cd /home/user/myproject && \
     jj git init --colocate && \
@@ -52,6 +84,7 @@ RUN mkdir -p /home/user/myproject && \
 
 # Container contents:
 #   - jj installed in /usr/local/bin
+#   - jj's ui.editor set to `true`, so description edits are non-interactive
 #   - /home/user/myproject  — jj project with initialized repository
 #   - Commit stack with feature and fix commits
 

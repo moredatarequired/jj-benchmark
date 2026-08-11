@@ -12,6 +12,8 @@ run has burned an hour of GPU-free-but-not-free CI time:
   * a Dockerfile pinning a different jj version from every other task
   * a Dockerfile that does not bake in the pinned verifier dependencies
   * a tests/test.sh that has drifted out of sync with its 52 identical siblings
+  * a tests/vacuity_floor.json that is missing, malformed, or stale with
+    respect to the tests defined in tests/test_final_state.py
 
 It also prints an inventory of things that are *policy*, not correctness --
 which instruction files use "## Implementation" vs "## Implementation Guide"
@@ -44,6 +46,7 @@ REQUIRED_FILES = (
     "environment/Dockerfile",
     "tests/test.sh",
     "tests/test_final_state.py",
+    "tests/vacuity_floor.json",
 )
 
 # (table path, key) pairs that must be present in task.toml.
@@ -71,6 +74,21 @@ JJ_VERSION_RE = re.compile(r"jj-v(\d+\.\d+\.\d+)")
 # this check is what stops one of them being bumped or dropped on its own and
 # only surfacing as a task that mysteriously errors mid-sweep.
 VERIFIER_DEPS = ("pytest==8.4.1", "pytest-json-ctrf==0.3.5")
+
+# tests/vacuity_floor.json names the tests in tests/test_final_state.py that
+# pass on the untouched bootstrap image, with no agent having run. tests/test.sh
+# excludes those names from both sides of the partial-credit fraction, which is
+# the only reason a nop agent still scores exactly 0 -- the only tests it passes
+# are the floored ones. The file is a measurement, not an opinion: it comes from
+# scripts/vacuity_floor.py --write and are re-measured in CI with --check.
+# This lint cannot re-measure them (no containers), so it checks the cheap
+# things -- shape, internal consistency, and staleness against the test count.
+FLOOR_NAME = "tests/vacuity_floor.json"
+FLOOR_KEYS = ("task", "tests", "floor", "passes_without_agent", "generated_by")
+FLOOR_GENERATOR = "scripts/vacuity_floor.py"
+
+# e.g. "def test_topology_restored():" at the start of a line.
+TEST_FUNC_RE = re.compile(r"^\s*def (test_\w+)\s*\(", re.MULTILINE)
 
 
 class Findings:
@@ -256,11 +274,125 @@ def check_test_sh_identical(digests: dict[str, str], findings: Findings) -> None
             )
 
 
+def check_vacuity_floor(task: str, task_dir: Path, findings: Findings) -> dict | None:
+    """tests/vacuity_floor.json must be well formed and not stale.
+
+    Returns the parsed record, or None if it could not be used. The named tests
+    are excluded from both sides of the partial-credit fraction in tests/test.sh,
+    so a floor naming too much shrinks the denominator and inflates every
+    model's score, and one naming too little pays a nop agent. Only a container
+    run can measure which names belong in it (scripts/vacuity_floor.py); what is
+    checkable here is that the file is shaped right and still describes the test
+    file next to it.
+    """
+    path = task_dir / FLOOR_NAME
+    test_file = task_dir / "tests/test_final_state.py"
+    if not path.is_file():
+        return None  # already reported by check_required_files
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        findings.fail(task, f"{FLOOR_NAME} does not parse: {exc}")
+        return None
+    if not isinstance(record, dict):
+        findings.fail(task, f"{FLOOR_NAME} is not a JSON object")
+        return None
+
+    missing = [key for key in FLOOR_KEYS if key not in record]
+    if missing:
+        findings.fail(task, f"{FLOOR_NAME} is missing key(s): {', '.join(missing)}")
+        return None
+
+    if record["task"] != task:
+        findings.fail(
+            task,
+            f"{FLOOR_NAME} records task {record['task']!r}, expected {task!r} -- "
+            "the file was copied from another task rather than measured",
+        )
+
+    if record["generated_by"] != FLOOR_GENERATOR:
+        findings.fail(
+            task,
+            f"{FLOOR_NAME} generated_by is {record['generated_by']!r}, expected "
+            f"{FLOOR_GENERATOR!r}. Floors are measured, never hand-written: run "
+            f"{FLOOR_GENERATOR} --write --task {task}",
+        )
+
+    names = record["passes_without_agent"]
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        findings.fail(task, f"{FLOOR_NAME} passes_without_agent is not a list of strings")
+        return None
+    if len(set(names)) != len(names):
+        findings.fail(task, f"{FLOOR_NAME} passes_without_agent has duplicate entries")
+
+    total, floor = record["tests"], record["floor"]
+    for key, value in (("tests", total), ("floor", floor)):
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            findings.fail(task, f"{FLOOR_NAME} {key} is not a non-negative integer")
+            return None
+
+    if floor != len(names):
+        findings.fail(
+            task,
+            f"{FLOOR_NAME} says floor {floor} but lists {len(names)} test(s) in "
+            "passes_without_agent -- the two disagree, so one of them is edited "
+            "by hand",
+        )
+
+    if floor >= total > 0:
+        findings.fail(
+            task,
+            f"{FLOOR_NAME} says all {total} test(s) pass with no agent. No floor "
+            "can rescue that: tests/test_final_state.py measures nothing the "
+            "agent has to do.",
+        )
+
+    if not test_file.is_file():
+        return record  # already reported by check_required_files
+    defined = TEST_FUNC_RE.findall(test_file.read_text(encoding="utf-8"))
+    if total != len(defined):
+        findings.fail(
+            task,
+            f"{FLOOR_NAME} was measured against {total} test(s) but "
+            f"tests/test_final_state.py now defines {len(defined)} -- the floor "
+            f"is stale. Re-measure with {FLOOR_GENERATOR} --write --task {task}",
+        )
+    unknown = sorted(n for n in names if n.rsplit("::", 1)[-1] not in set(defined))
+    if unknown:
+        findings.fail(
+            task,
+            f"{FLOOR_NAME} lists test(s) that tests/test_final_state.py does not "
+            f"define: {', '.join(unknown)} -- the floor is stale",
+        )
+    return record
+
+
+def check_test_sh_reads_floor(task: str, task_dir: Path, findings: Findings) -> None:
+    """The shared test.sh is what applies the floor; it must still read it.
+
+    Without this, reverting test.sh to the old 0/1 script (or to a naive
+    passed/tests fraction) leaves 53 floor files in the tree that nothing
+    consults, and the lint stays green because all 53 copies still agree.
+    """
+    path = task_dir / "tests/test.sh"
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8")
+    if "vacuity_floor.json" not in text:
+        findings.fail(
+            task,
+            "tests/test.sh does not read vacuity_floor.json, so the no-agent "
+            "floor is not being excluded and partial credit would pay a nop "
+            "agent",
+        )
+
+
 def print_inventory(
     instruction_sections: dict[str, str],
     network_modes: dict[str, Counter],
     jj_version: str | None,
     test_sh_uniform: bool,
+    floors: dict[str, dict],
 ) -> None:
     """Non-fatal policy inventory. Drift here shows up as changed numbers."""
     buckets: dict[str, list[str]] = defaultdict(list)
@@ -287,6 +419,28 @@ def print_inventory(
         for value, count in sorted(counts.items(), key=lambda kv: (-kv[1], str(kv[0]))):
             print(f"  {str(value):<26} {count:>5}")
 
+    # The no-agent floor is how much of each verifier is satisfied before the
+    # agent does anything. Its distribution is the honest measure of how much
+    # resolution partial credit actually buys: a task with tests - floor == 1
+    # is still scored 0 or 1 no matter what the fraction says.
+    print("\nno-agent floor (tests/vacuity_floor.json):")
+    print(f"  {'scorable tests (tests - floor)':<32} {'tasks':>5}  tasks")
+    buckets_by_width: dict[int, list[str]] = defaultdict(list)
+    for task, record in sorted(floors.items()):
+        buckets_by_width[record["tests"] - record["floor"]].append(task)
+    for width in sorted(buckets_by_width):
+        tasks = buckets_by_width[width]
+        label = f"{width} (still 0/1)" if width <= 1 else str(width)
+        print(f"  {label:<32} {len(tasks):>5}  {', '.join(tasks)}")
+    nonzero = sorted(t for t, r in floors.items() if r["floor"])
+    print(f"\n  tasks with a nonzero floor: {len(nonzero)}")
+    for task in nonzero:
+        record = floors[task]
+        names = ", ".join(
+            n.rsplit("::", 1)[-1] for n in record["passes_without_agent"]
+        )
+        print(f"    {task:<32} {record['floor']}/{record['tests']}  {names}")
+
     print("\npinned jj version: " + (f"v{jj_version}" if jj_version else "(unknown)"))
     print(
         "tests/test.sh:     "
@@ -309,6 +463,7 @@ def main() -> int:
     test_sh_digests: dict[str, str] = {}
     instruction_sections: dict[str, str] = {}
     network_modes: dict[str, Counter] = {p: Counter() for p in NETWORK_MODE_PHASES}
+    floors: dict[str, dict] = {}
 
     for task_dir in task_dirs:
         task = task_dir.name
@@ -333,6 +488,11 @@ def main() -> int:
         if version:
             pinned_jj[task] = version
 
+        record = check_vacuity_floor(task, task_dir, findings)
+        if record is not None:
+            floors[task] = record
+        check_test_sh_reads_floor(task, task_dir, findings)
+
         test_sh = task_dir / "tests/test.sh"
         if test_sh.is_file():
             test_sh_digests[task] = hashlib.sha256(test_sh.read_bytes()).hexdigest()
@@ -346,6 +506,7 @@ def main() -> int:
         network_modes,
         consensus_jj,
         test_sh_uniform=len(set(test_sh_digests.values())) <= 1,
+        floors=floors,
     )
 
     findings.report()

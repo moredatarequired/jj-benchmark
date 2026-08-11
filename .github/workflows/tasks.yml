@@ -4,9 +4,14 @@ name: tasks
 #
 #   lint  - pure-Python schema check, seconds, always runs.
 #   tasks - per-task container check: the bootstrap must produce the state it
-#           claims, and the verifier must NOT pass without an agent. A verifier
-#           that goes green on the untouched image is vacuous - it would score
-#           every model 100% on that task while measuring nothing.
+#           claims, and the verifier must award NOTHING without an agent. A
+#           verifier that goes green on the untouched image is vacuous - it
+#           would score every model 100% on that task while measuring nothing.
+#           Since the reward is now a fraction (tests/test.sh awards partial
+#           credit from the CTRF report), the same job also re-measures the
+#           set of tests that pass with no agent -- the floor that fraction
+#           excludes -- and fails if the committed
+#           tasks/<task>/tests/vacuity_floor.json names a different set.
 #
 # Deliberately *not* here: running reference solutions. That needs a solution
 # per task, which does not exist yet. These two gates catch the failure modes
@@ -17,6 +22,7 @@ on:
     paths:
       - 'tasks/**'
       - 'scripts/lint_tasks.py'
+      - 'scripts/vacuity_floor.py'
       - '.github/workflows/tasks.yml'
   workflow_dispatch:
   schedule:
@@ -75,7 +81,7 @@ jobs:
             # grep -q exits on the first match, so piping a large "$changed"
             # into it kills echo with SIGPIPE and pipefail turns the whole
             # pipeline non-zero -- the escalation silently never fires.
-            if grep -qE '^(scripts/lint_tasks\.py|\.github/workflows/tasks\.yml)$' <<<"$changed"; then
+            if grep -qE '^(scripts/lint_tasks\.py|scripts/vacuity_floor\.py|\.github/workflows/tasks\.yml)$' <<<"$changed"; then
               echo "shared tooling changed -> running every task"
               selected=$(all_tasks)
             else
@@ -148,19 +154,27 @@ jobs:
       # test.sh exits 0 whether the tests passed or failed -- harbor reads the
       # verdict out of /logs/verifier/reward.txt -- so that is what we assert
       # on. A missing reward.txt means the script never got that far.
-      - name: Vacuity check - the verifier must FAIL with no agent
+      - name: Vacuity check - the verifier must award ZERO with no agent
         run: |
           logs=$(mktemp -d)
           # Two task images run as an unprivileged user, so /logs must be
           # writable by anyone.
           chmod 777 "$logs"
+          # test.sh exits non-zero only when it could not turn the run into a
+          # reward at all, so capture the code instead of letting `bash -e`
+          # abort here with no diagnosis.
+          code=0
           docker run --rm --network none \
             -v "$PWD/tasks/${{ matrix.task }}/tests:/tests:ro" \
             -v "$logs:/logs" \
             task-img \
-            bash /tests/test.sh
+            bash /tests/test.sh || code=$?
           if [ ! -f "$logs/verifier/reward.txt" ]; then
             echo "::error title=Verifier did not run::tasks/${{ matrix.task }}/tests/test.sh produced no /logs/verifier/reward.txt."
+            exit 1
+          fi
+          if [ "$code" -ne 0 ]; then
+            echo "::error title=Verifier could not score::tasks/${{ matrix.task }}/tests/test.sh exited $code, which it only does when it never reached a verdict: $(cat "$logs/verifier/verifier_error.txt" 2>/dev/null)"
             exit 1
           fi
           if [ ! -f "$logs/verifier/ctrf.json" ]; then
@@ -168,8 +182,20 @@ jobs:
             exit 1
           fi
           reward=$(cat "$logs/verifier/reward.txt")
-          if [ "$reward" != "0" ]; then
-            echo "::error title=Vacuous verifier::tasks/${{ matrix.task }}/tests/test_final_state.py passes on the untouched bootstrap image. It does not test anything the agent has to do."
+          # Numeric, not a string compare. The reward is a float now, so an
+          # honest zero can arrive as "0", "0.0" or "0.000000" and the old
+          # [ "$reward" != "0" ] would reject two of the three. The assertion
+          # itself is unchanged in meaning: any credit awarded on the untouched
+          # bootstrap image is credit every model collects for free.
+          if ! python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) == 0.0 else 1)' "$reward"; then
+            echo "::error title=Vacuous verifier::tasks/${{ matrix.task }}/tests/test_final_state.py earns reward $reward on the untouched bootstrap image. With no agent the reward must be exactly 0. If some of its assertions legitimately hold in the bootstrap state, they belong in the measured floor: run scripts/vacuity_floor.py --write --task ${{ matrix.task }}."
             exit 1
           fi
-          echo "OK: verifier rejected the no-agent state with no network (reward $reward)."
+          # The floor file is what makes the assertion above satisfiable, so it
+          # has to be audited too, against this very run. The comparison is on
+          # test NAMES: a verifier weakened so that a different test now passes
+          # on an untouched repo is score inflation on every model even though
+          # the count did not move, and nothing else in CI would notice.
+          python3 scripts/vacuity_floor.py --check \
+            --task "${{ matrix.task }}" --ctrf "$logs/verifier/ctrf.json"
+          echo "OK: verifier awarded no credit for the no-agent state with no network (reward $reward)."

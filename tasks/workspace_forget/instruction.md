@@ -9,11 +9,6 @@ A developer is working on a jujutsu (`jj`) project and created a secondary works
 - The `experiment` workspace must be "forgotten" by `jj` so it is no longer tracked.
 - The directory `/home/user/myproject-experiment` must be completely deleted from the disk.
 
-## Implementation Guide
-1. Navigate to the main project directory: `cd /home/user/myproject`.
-2. Stop tracking the workspace by running `jj workspace forget experiment`.
-3. Remove the directory from the filesystem using `rm -rf /home/user/myproject-experiment`.
-
 ## Constraints
 - Project path: `/home/user/myproject`
 - The `experiment` workspace must not be tracked by `jj` anymore.

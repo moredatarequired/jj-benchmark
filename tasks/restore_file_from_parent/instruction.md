@@ -8,11 +8,6 @@ You are working in a Jujutsu repository located at `/home/user/myproject`. You h
 
 You need to discard the uncommitted changes to `config.txt` so that it perfectly matches the version from the parent commit, while keeping your modifications to `app.py` intact.
 
-## Implementation
-1. Navigate to the project directory `/home/user/myproject`.
-2. Use the appropriate `jj` command to restore `config.txt` to its state in the parent commit.
-3. Do not modify `app.py` or create any new commits.
-
 ## Constraints
 - Project path: `/home/user/myproject`
 - Start command: none

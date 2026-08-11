@@ -10,13 +10,6 @@ You are starting a new project and need to set up your version control using `jj
 - Rename the `upstream` remote to `public`.
 - Remove the `origin` remote.
 
-## Implementation
-1. Navigate to the project path.
-2. Initialize a colocated `jj` repository.
-3. Use `jj git remote add` to add the `origin` and `upstream` remotes.
-4. Use `jj git remote rename` to rename `upstream` to `public`.
-5. Use `jj git remote remove` to remove the `origin` remote.
-
 ## Constraints
 - **Project path**: `/home/user/myproject`
 - You must use `jj` commands to manage the remotes.

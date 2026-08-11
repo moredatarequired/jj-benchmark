@@ -8,6 +8,7 @@ run has burned an hour of GPU-free-but-not-free CI time:
   * a task missing one of the seven files the harness expects
   * a task.toml that does not parse, or that omits a timeout / resource knob
   * an instruction.md missing the sections agents are told to rely on
+  * a bootstrap/task.json whose task_description has drifted from instruction.md
   * a Dockerfile pinning a different jj version from every other task
   * a Dockerfile that does not bake in the pinned verifier dependencies
   * a tests/test.sh that has drifted out of sync with its 52 identical siblings
@@ -24,6 +25,7 @@ Exit status is 0 if every hard check passed, 1 otherwise.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sys
 import tomllib
@@ -144,6 +146,47 @@ def check_instruction(task: str, task_dir: Path, findings: Findings) -> str:
         if not re.search(rf"^{re.escape(section)}\s*$", text, re.MULTILINE):
             findings.fail(task, f"instruction.md is missing a '{section}' section")
     return text
+
+
+def check_task_json(task: str, task_dir: Path, instruction: str, findings: Findings) -> None:
+    """bootstrap/task.json duplicates instruction.md in its task_description.
+
+    That duplication is what the harness actually hands the agent, so a task
+    can be edited, reviewed and merged while the agent keeps being prompted
+    with the superseded text -- silently, because nothing else reads the JSON.
+    Three files had already drifted this way before the check existed. The
+    fix is never to hand-edit the JSON: regenerate the field from
+    instruction.md.
+    """
+    path = task_dir / "bootstrap/task.json"
+    if not path.is_file() or not (task_dir / "instruction.md").is_file():
+        return  # already reported by check_required_files
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        findings.fail(task, f"bootstrap/task.json does not parse: {exc}")
+        return
+    if not isinstance(data, dict):
+        findings.fail(task, "bootstrap/task.json is not a JSON object")
+        return
+
+    if data.get("task_name") != task:
+        findings.fail(
+            task,
+            f"bootstrap/task.json task_name is {data.get('task_name')!r}, "
+            f"expected {task!r}",
+        )
+
+    if "task_description" not in data:
+        findings.fail(task, "bootstrap/task.json is missing task_description")
+        return
+    if data["task_description"] != instruction:
+        findings.fail(
+            task,
+            "bootstrap/task.json task_description has drifted from "
+            "instruction.md -- regenerate the field from the file rather than "
+            "editing the JSON by hand",
+        )
 
 
 def check_dockerfile(task: str, task_dir: Path, findings: Findings) -> str | None:
@@ -278,6 +321,7 @@ def main() -> int:
                 network_modes[phase][section["network_mode"]] += 1
 
         text = check_instruction(task, task_dir, findings)
+        check_task_json(task, task_dir, text, findings)
         if "## Implementation Guide" in text:
             instruction_sections[task] = "## Implementation Guide"
         elif "## Implementation" in text:

@@ -8,10 +8,5 @@ In `jj` (Jujutsu), new files are automatically tracked and included in the worki
 - Do not modify the existing `.gitignore` file.
 - Finalize the current working copy by creating a new commit with the message "Track log file".
 
-## Implementation Guide
-1. Navigate to the repository at `/home/user/project`.
-2. Use the `jj file track --include-ignored` command to explicitly track the `app.log` file.
-3. Run `jj commit -m "Track log file"` to finalize the working copy commit and start a new one.
-
 ## Constraints
 - Project path: `/home/user/project`

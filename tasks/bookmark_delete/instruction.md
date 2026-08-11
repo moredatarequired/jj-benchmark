@@ -6,9 +6,5 @@ You have a Jujutsu repository at `/home/user/myproject`. There is a bookmark nam
 ## Requirements
 - Delete the bookmark named `feature-x`.
 
-## Implementation
-1. Navigate to the `/home/user/myproject` directory.
-2. Delete the bookmark `feature-x` using the appropriate `jj` command.
-
 ## Constraints
 - Project path: `/home/user/myproject`

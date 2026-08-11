@@ -1,7 +1,7 @@
 # Create a chain of commits in Jujutsu
 
 ## Background
-In Jujutsu (`jj`), the working copy is always a commit. You can use `jj describe` to set the description of the current working copy commit, and `jj new` to create a new commit on top of the current one.
+In Jujutsu (`jj`), the working copy is always a commit. There is no staging area and no separate commit step: file edits land in the current commit as you make them.
 
 ## Requirements
 You have an initialized Jujutsu repository at `/home/user/myproject`.

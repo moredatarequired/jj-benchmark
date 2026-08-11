@@ -11,7 +11,6 @@ Jujutsu (`jj`) provides a powerful functional templating language to customize t
 5. Configure the repository-level `jj` config (`/home/user/myproject/.jj/repo/config.toml`) to define a custom template alias named `'custom_log'` under `[template-aliases]`.
    The alias should format a commit as: `<short_commit_id> | <author_email_local_part> | <first_line_of_description>\n`
    (e.g., `12345678 | test | Initial commit\n`).
-   *Hint: Use `commit_id.short()`, `author.email().local()`, and `description.first_line()` functions.*
 6. Configure the default log template in the same config file to use your `custom_log` alias (under `[templates]` set `log = 'custom_log'`).
 
 ## Constraints

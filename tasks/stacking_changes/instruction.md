@@ -1,7 +1,7 @@
 # Stacking Changes with Jujutsu (jj)
 
 ## Background
-Jujutsu (`jj`) is a modern version control system that treats the working copy as a permanent commit and makes it easy to manage a "stack" of small commits. You can edit any commit in the stack with `jj edit <change_id>`, and all descendants will automatically rebase.
+Jujutsu (`jj`) is a modern version control system that treats the working copy as a permanent commit and makes it easy to manage a "stack" of small commits. Changing a commit partway down the stack does not orphan the commits above it — its descendants are rewritten onto the updated version automatically.
 
 ## Requirements
 In the repository at `/home/user/repo`, there is a linear history of commits on top of the initial commit:

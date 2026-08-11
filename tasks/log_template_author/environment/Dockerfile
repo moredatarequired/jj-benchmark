@@ -33,14 +33,27 @@ RUN mkdir -p /home/user && chmod 0755 /home/user
 LABEL Author="any-task-builder"
 LABEL Description="jj log template task environment"
 
+# The identity is configured BEFORE `jj git init`, which is what the other 39
+# task images do. Order matters here and it is not cosmetic: `jj git init`
+# creates the working-copy commit immediately, stamping it with the identity
+# configured at that moment. Setting the identity afterwards leaves @ authored
+# by " <>" -- jj says so itself ("This setting will only impact future commits.
+# The author of the working copy will stay ' <>'.") -- and this task asks for a
+# script that prints the author of @ as "Test User <test@example.com>", which
+# would then be a string the repository does not contain. jj happens to fill
+# the empty author in from config the first time it snapshots a change in the
+# working copy, so the task was solvable by accident; an agent that inspected
+# @'s author before creating any file saw " <>" and had every reason to
+# conclude the required output could not come from a template.
 RUN mkdir -p /home/user/project && \
     cd /home/user/project && \
-    jj git init --colocate && \
-    jj config set --repo user.name "Test User" && \
-    jj config set --repo user.email "test@example.com"
+    jj config set --user user.name "Test User" && \
+    jj config set --user user.email "test@example.com" && \
+    jj git init --colocate
 
 # Container contents:
 #   - jj installed in /usr/local/bin/jj
 #   - /home/user/project initialized as a jj repo with user config
+#   - the working-copy commit @ is authored by Test User <test@example.com>
 
 CMD ["/bin/bash", "-c", "trap : TERM INT; sleep infinity & wait"]

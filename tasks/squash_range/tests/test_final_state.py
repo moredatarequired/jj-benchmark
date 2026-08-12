@@ -1,14 +1,23 @@
 """Verifier for the squash_range task.
 
-The task asks for two `fix` commits to be combined into `feat: initial
-structure` *in a single operation* -- the skill under test is naming a range of
-source commits with a revset instead of squashing them one at a time. The end
-state of one range squash and of two sequential squashes is byte-for-byte
-identical, so the end state alone cannot tell them apart. What does tell them
-apart is jj's operation log: this file replays the visibility of the two source
-commits across every operation and requires that, at the moment they finally
-stopped being visible, they stopped *together*, in one operation, and that the
-same operation is the one that moved their content into the target.
+The task asks for two `fix` commits to be folded into their parent, `feat:
+initial structure`. HOW that happens is not graded. One range squash and two
+sequential squashes reach a byte-for-byte identical end state, and this file no
+longer tries to tell them apart: it used to, via a scored test requiring both
+source commits to have stopped being visible in the SAME operation, and that
+test has been removed. It graded method rather than outcome -- an agent that
+squashed twice produced exactly the history the request asks for and was marked
+down for the route it took there.
+
+What survives from the operation-log replay is one assertion, and it is a
+FABRICATION DETECTOR rather than a method check: the operation in which the fix
+commits finally stopped being visible must also be the operation in which their
+content arrived in the target. Without it, hand-editing structure.txt inside the
+target and then `jj abandon`-ing both fixes -- no squash anywhere -- produces a
+byte-perfect end state and scores full marks. That check cannot fail an honest
+solve however many operations it took: one range squash, two sequential squashes
+and a squash-undo-retry all put the content and the disappearance in the same
+step, because that step IS a squash.
 
 Three deliberate choices:
 
@@ -30,44 +39,24 @@ Three deliberate choices:
     construction -- the derivation from this repository's operation log is still
     the fallback, and it says out loud that no identity claim was made.
 
-  * The check looks only at the *last* transition in which the fix commits
-    disappeared, not at the total number of operations. An agent that tries two
-    sequential squashes, undoes them, and then does it properly in one
-    operation has demonstrated the skill and passes -- while an agent that
-    simply squashes twice and stops fails. Counting operations instead would
-    have been both harsher (it would fail the undo/retry path) and weaker (the
-    working-copy snapshot operation that jj adds on an agent's very first
-    command, and any further snapshot an agent's file edits produce, make the
-    absolute count unpredictable).
+  * The replay looks only at the *last* transition in which the fix commits
+    disappeared, not at the total number of operations, and never at how many
+    operations it took. An agent that squashes, undoes, and squashes again is
+    graded on the step that stuck. Counting operations was never possible
+    anyway: the working-copy snapshot jj adds on an agent's very first command,
+    and any further snapshot its file edits produce, make the absolute count
+    unpredictable.
 
-WHERE THE SINGLE-OPERATION REQUIREMENT IS STATED, AND WHERE IT SHOULD BE
-========================================================================
+NOTHING IN THIS FILE GRADES METHOD
+==================================
 
-test_fixes_were_combined_in_a_single_operation is the only assertion in this
-file that a byte-perfect end state can fail, so it is the only one that has to
-be stated to the agent somewhere -- grading an unwritten rubric measures
-conformance rather than the task. Today it is stated in instruction.md, in both
-arms of this task (`squash_range` and `squash_range_terse`).
-
-That is not where it belongs. "Fold commits in one operation" is a project
-convention, not a per-request preference: nobody restates it on every ticket. The
-right home is a conventions file (AGENTS.md, with CLAUDE.md symlinked to it) in
-the environment, which would also make the task harder in the direction worth
-testing -- the agent would have to read a rule stated in general terms and work
-out that it implies naming a range with a revset, instead of being handed the
-word "operation" in the request.
-
-It is not done that way yet, and the reason is measured rather than assumed: the
-agent process starts at `/` (harbor passes no `-w` to `docker exec` and no task
-sets [environment] workdir or a Dockerfile WORKDIR), and Claude Code's ancestor
-walk for CLAUDE.md excludes the filesystem root, so NO conventions file anywhere
-in these images reaches the agent at session start. Fixing that needs a WORKDIR
-in every task's Dockerfile, which moves the agent's starting directory and so
-makes any sweep on the new images incomparable with the existing baseline. That
-is a separate change with its own control arm, deliberately not bundled here.
-
-Nothing about this file changes when it happens: the assertion is
-prompt-independent, and only the clause in the two instruction.md files moves.
+Every assertion here is about the end state, except the fabrication detector
+described above -- and that one is satisfied by every honest route to the end
+state, so there is no requirement the agent has to be told beyond "fold the two
+fixes into their parent". That is deliberate and it is the point of the change
+that removed test_fixes_were_combined_in_a_single_operation: a verifier that can
+fail a correct history because of the sequence of commands that produced it is
+measuring conformance to an unwritten rubric, not the task.
 
 Every jj call passes --ignore-working-copy so that verification itself never
 writes an operation to the repository it is inspecting.
@@ -416,19 +405,26 @@ def test_feature_bookmark_still_points_at_the_target():
 
 
 # --------------------------------------------------------------------------
-# The single-operation requirement
+# Anti-fabrication: the fixes' content moved when the fixes went away
 # --------------------------------------------------------------------------
 
-def test_fixes_were_combined_in_a_single_operation():
-    """Both source commits stopped being visible in the *same* operation.
+def test_the_operation_that_removed_the_fixes_is_what_moved_the_content():
+    """The operation that removed the fixes is the one that carried their changes.
 
-    Walking the operation log from newest to oldest, find the most recent
-    operation at which either fix commit was still visible. The step from that
-    operation to the next one is when the fixes finally went away, and the
-    instruction requires that step to have taken both of them at once.
+    Without this, an agent could edit structure.txt by hand in the target commit
+    and then make both fix commits vanish with `jj abandon`: commits gone,
+    correct final content, no squash anywhere. Requiring the content to change
+    *in the same operation that removed them* rules that out, because the hand
+    edit lands in an earlier operation and leaves the target already holding the
+    final content when the fixes disappear.
 
-    Two sequential squashes fail here: the last such step takes only the second
-    fix, because the first one had already gone in an earlier operation.
+    This is the only assertion in this file that reads the operation log, and it
+    is not a method check. It passes for one range squash (both fixes vanish in
+    the squash that carries their content), for two sequential squashes (the
+    last one removes the second fix and carries the content that ends up in the
+    target), and for a squash-undo-retry (only the step that stuck is examined).
+    What it fails is a history in which the content did not travel with the
+    commits -- which is not a way of doing the task, it is a way of faking it.
     """
     ids = bootstrap_change_ids()
     fix_ids = {ids[d] for d in FIXES}
@@ -444,44 +440,7 @@ def test_fixes_were_combined_in_a_single_operation():
     )
     assert index != 0, (
         "The fix commits are still visible at the latest operation: they were "
-        "never combined into the target commit."
-    )
-
-    before, after = ops[index], ops[index - 1]
-    remaining = fix_ids & set(visible_commits(before))
-    assert remaining == fix_ids, (
-        "The fix commits were not combined in a single operation. At the "
-        f"operation before the last one that removed them ({before[:12]}), only "
-        f"{len(remaining)} of the 2 fix commits was still present, so the other "
-        "one had already been squashed away by an earlier operation. Both "
-        "source commits must be named by one operation."
-    )
-    assert not (fix_ids & set(visible_commits(after))), (
-        f"Internal check: operation {after[:12]} was expected to be the one "
-        "where the fix commits stopped being visible."
-    )
-
-
-def test_the_single_operation_is_what_moved_the_content():
-    """The operation that removed the fixes is the one that carried their changes.
-
-    Without this, an agent could edit structure.txt by hand in the target commit
-    and then make both fix commits vanish in one `jj abandon`: two commits gone
-    in one operation, correct final content, no squash. Requiring the content to
-    change *in that same operation* rules that out, because the hand edit lands
-    in an earlier operation.
-    """
-    ids = bootstrap_change_ids()
-    fix_ids = {ids[d] for d in FIXES}
-    ops = operation_ids()
-
-    index = next(
-        (i for i, op in enumerate(ops) if fix_ids & set(visible_commits(op))),
-        None,
-    )
-    assert index is not None and index != 0, (
-        "The fix commits were never combined away; see "
-        "test_fixes_were_combined_in_a_single_operation."
+        "never folded into the target commit."
     )
 
     before, after = ops[index], ops[index - 1]

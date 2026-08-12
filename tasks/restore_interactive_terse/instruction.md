@@ -1,1 +1,1 @@
-The commit in `/home/user/myproject` that removed the legacy module took a config file out with it that we still need. Put it back — and fix it in that commit, don't patch it back in on top.
+the commit that removed the legacy module also deleted a config file we need — restore it there, not on top

@@ -10,13 +10,25 @@ commits across every operation and requires that, at the moment they finally
 stopped being visible, they stopped *together*, in one operation, and that the
 same operation is the one that moved their content into the target.
 
-Two deliberate choices:
+Three deliberate choices:
 
   * Nothing here reads jj's human-readable operation descriptions. A previous
     task in this benchmark lost all of its signal when jj renamed the "undo"
     operation to "revert"; asserting on `op log` prose is asserting on release
     notes. The signal used instead is structural: which change ids are visible
     at each operation, and what the target commit's file content was there.
+
+  * The four change ids every assertion below is phrased in come from the
+    BOOTSTRAP ANCHOR -- a measurement taken from the untouched image before the
+    agent ran (see tests/anchor.py) -- and no longer from this repository's own
+    operation log. The replay stays, because "were both fixes still visible one
+    operation earlier" is a question only the operation log can answer. But a
+    replay authenticates a history against ITSELF: a repository that was rebuilt
+    and then squashed properly agrees with its own record, which is why the
+    reference values have to come from outside the artifact being graded. When
+    the anchor is not available -- cold CI builds have no anchor file, by
+    construction -- the derivation from this repository's operation log is still
+    the fallback, and it says out loud that no identity claim was made.
 
   * The check looks only at the *last* transition in which the fix commits
     disappeared, not at the total number of operations. An agent that tries two
@@ -35,14 +47,26 @@ writes an operation to the repository it is inspecting.
 import subprocess
 from functools import lru_cache
 
+from anchor import change_id_or_fallback
+
 PROJECT_DIR = "/home/user/myproject"
 
 # Bootstrap history: root() <- "initial commit" (main) <- TARGET (feature)
 #   <- "fix: syntax error" <- "fix: logic error" <- DESCENDANT
+ORIGIN = "initial commit"
 TARGET = "feat: initial structure"
 FIXES = ("fix: syntax error", "fix: logic error")
 DESCENDANT = "feat: add more stuff"
-ROOT_AND = ("initial commit", TARGET, DESCENDANT)
+ROOT_AND = (ORIGIN, TARGET, DESCENDANT)
+
+# The bootstrap commits every assertion here is phrased in.
+GRADED = (ORIGIN, TARGET) + FIXES + (DESCENDANT,)
+
+# What change_id_or_fallback() is asked to return when the anchor cannot supply
+# an id. It is a marker, not a revset: it never reaches jj. Its only job is to
+# tell bootstrap_change_ids() to use the operation-log derivation instead, which
+# is what this file did before the anchor existed.
+NO_ANCHOR = ""
 
 # The file both fixes rewrote. "fix: logic error" wrote last, so a target commit
 # carrying both fixes ends up with the second fix's content.
@@ -106,32 +130,59 @@ def visible_commits(operation_id):
 
 
 @lru_cache(maxsize=None)
-def bootstrap_change_ids():
-    """Map the bootstrap descriptions to change ids, read out of the op log.
+def change_ids_from_this_repositorys_own_operation_log():
+    """THE FALLBACK ONLY. Recover the change ids from this repo's own op log.
 
-    Change ids survive rewrites, so this identifies the commits without relying
-    on descriptions still being intact at the end -- a squash may fold the
-    source descriptions into the target's, and an agent is free to reword.
     Scanning oldest-first takes each description from the operation that first
-    made such a commit visible, i.e. from the bootstrap.
+    made such a commit visible, i.e. from the bootstrap -- so it survives an
+    agent rewording the commits, which is the reason it was written this way.
+
+    What it cannot do is establish that those commits are the ones the task
+    handed over: the operation log it reads belongs to the repository being
+    graded, so a repository that was rebuilt and then squashed properly agrees
+    with itself here. bootstrap_change_ids() prefers the anchor for exactly that
+    reason and only reaches this when there is no anchor to prefer.
     """
-    wanted = (TARGET,) + FIXES + (DESCENDANT,)
     found = {}
     for operation_id in reversed(operation_ids()):
         for change_id, first_line in visible_commits(operation_id).items():
-            if first_line in wanted:
+            if first_line in GRADED:
                 found.setdefault(first_line, change_id)
         # The bootstrap operations are the oldest ones, so this stops after a
         # dozen operations however many the agent went on to add.
-        if len(found) == len(wanted):
+        if len(found) == len(GRADED):
             break
-    missing = [d for d in wanted if d not in found]
+    missing = [d for d in GRADED if d not in found]
     assert not missing, (
         "The operation log has no operation in which commits described "
         f"{missing} were visible. The bootstrap created them, so the "
         "repository's operation log is not the one this task started from."
     )
     return found
+
+
+@lru_cache(maxsize=None)
+def bootstrap_change_ids():
+    """Map the bootstrap descriptions to the change ids the BOOTSTRAP gave them.
+
+    A jj change id is generated randomly at commit creation and preserved by
+    rebase, squash and describe, so it is the one handle on a bootstrap commit
+    that a correct solve keeps and a rebuild cannot reproduce. These come from
+    the anchor -- captured on the host from the untouched image, before the agent
+    ran -- so every assertion below is about the commits this task handed over
+    rather than about whatever now carries the right description.
+
+    In cold CI there is no anchor file (it is a per-build artifact: change ids
+    are random per image build, so no committed file could hold them). Then this
+    degrades to the operation-log derivation above, which is exactly what this
+    verifier did before, and change_id_or_fallback() prints that the identity
+    claim was not made.
+    """
+    anchored = {d: change_id_or_fallback(d, NO_ANCHOR, repo=PROJECT_DIR)
+                for d in GRADED}
+    if all(anchored.values()):
+        return anchored
+    return change_ids_from_this_repositorys_own_operation_log()
 
 
 def file_content(operation_id, change_id, path):
@@ -157,12 +208,23 @@ def latest():
 # --------------------------------------------------------------------------
 
 def test_only_the_expected_commits_remain():
-    """"exactly four commits must remain in the log"."""
+    """"exactly four commits must remain in the log", and WHICH four.
+
+    The count alone would accept four fabricated commits; naming the three
+    non-root survivors by their bootstrap change ids does not.
+    """
+    ids = bootstrap_change_ids()
     visible = visible_commits(latest())
     assert len(visible) == EXPECTED_COMMIT_COUNT, (
         f"Expected {EXPECTED_COMMIT_COUNT} commits to remain (the root commit, "
         f"{', '.join(repr(d) for d in ROOT_AND)}), but found {len(visible)}: "
         f"{sorted(visible.values())}. The commits were not properly squashed."
+    )
+    absent = [d for d in ROOT_AND if ids[d] not in visible]
+    assert not absent, (
+        "The commit(s) the bootstrap created and described "
+        f"{absent} are not among the four that remain, so the four visible "
+        "commits are not the ones this task started from."
     )
 
 
@@ -230,19 +292,29 @@ def test_target_commit_carries_both_fixes():
 
 
 def test_topology_preserved():
-    """The squash must not reshape the rest of the history."""
+    """The squash must not reshape the rest of the history.
+
+    Parents are compared as CHANGE IDS, not as parent descriptions. A
+    description is free text: `jj describe` can put "initial commit" on any
+    commit, so a fabricated stack carrying the bootstrap's descriptions
+    satisfied the description form of this check. A change id cannot be written
+    by hand.
+    """
     ids = bootstrap_change_ids()
-    for change_id, expected_parent in (
-        (ids[TARGET], "initial commit"),
-        (ids[DESCENDANT], TARGET),
+    for description, parent_description in (
+        (TARGET, ORIGIN),
+        (DESCENDANT, TARGET),
     ):
+        change_id, expected = ids[description], ids[parent_description]
         out = jj(
             "log", "-r", change_id, "--no-graph",
-            "-T", 'parents.map(|p| p.description().first_line()).join(",") ++ "\\n"',
+            "-T", 'parents.map(|p| p.change_id()).join(",") ++ "\\n"',
         )
-        assert out.strip() == expected_parent, (
-            f"Commit {change_id[:12]} sits on parent(s) {out.strip()!r}, "
-            f"expected {expected_parent!r}."
+        assert out.strip() == expected, (
+            f"The bootstrap commit described {description!r} ({change_id[:12]}) "
+            f"sits on parent change id(s) {out.strip()[:12]!r}, expected the "
+            f"bootstrap commit described {parent_description!r} "
+            f"({expected[:12]})."
         )
 
 

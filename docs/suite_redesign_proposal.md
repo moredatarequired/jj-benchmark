@@ -33,18 +33,36 @@ grader artifact of its own. That is the instrument.
 and the anchoring column were recomputed mechanically across all 58 task directories and match
 the audit's table row for row. Anything marked *inferred* I did not run.
 
+*Corrected against the binary-verified survey — a provenance caveat on the baseline.* The survey's
+review pass records that the 795 trials were run at `68525335e6`, which **predates the 2026-08-12
+hardening**, so they describe the same 53 task *names* under different graders and are not
+comparable forward. Every baseline number in this document is therefore evidence about which tasks
+*were* saturated, not a prediction of what a re-run scores. The `squash_range` bullet above is the
+worked example of that gap, not the exception to it.
+
 ---
 
 ## 0. Companion document: the capability survey
 
 This proposal has a companion that it was **not** written against, and which has since been
-reconciled into it: **`docs/task_redesign_survey.md`**, commit **`0a8aab1b`** on branch
+reconciled into it: **`docs/task_redesign_survey.md`**, commit **`dac8118b`** on branch
 **`claude/hearth-thread-zk1kgr`** (not on this branch — read it with
-`git show 0a8aab1b:docs/task_redesign_survey.md`). Where the two documents once disagreed, this
+`git fetch origin claude/hearth-thread-zk1kgr` and then
+`git show dac8118b:docs/task_redesign_survey.md`). Where the two documents once disagreed, this
 one has been corrected; every such correction is marked in place as *corrected against the
 binary-verified survey*.
 
-**What it contains.** A 1,888-line research survey of what jj is for, written against the real
+*Citation updated.* Earlier revisions of this document cited **`0a8aab1b`**, the pre-review survey.
+`dac8118b` is the same document after an adversarial fact-check fixed **25 defects**: four
+`[verified]` labels whose cited evidence did not contain the claim, eight unlabelled behavioural
+claims, and eight defects in the 39 themes themselves — one grading HOW, one pinning `@`
+positionally against the survey's own rules, one describing a conflict-child state 0.38 cannot
+produce, and one asking for the commit that *introduced* a line while grading `jj file annotate`'s
+*last-changed* answer. Cite `dac8118b`, not `0a8aab1b`. Three claims this document had taken from
+the pre-review text are corrected below: §4.0.2 #1 (the divergence offsets), the N3 row in §4.2
+(theme 3.6's actual solve) and prerequisite 4 in §5 (the 0.42/0.43 removals).
+
+**What it contains.** A 1,969-line research survey of what jj is for, written against the real
 pinned `jj 0.38.0` binary rather than against documentation. Four parts matter to this proposal:
 
 1. **A sixteen-area capability map** (its §2), each area labelled with the mental-model failure a
@@ -63,16 +81,20 @@ pinned `jj 0.38.0` binary rather than against documentation. Four parts matter t
 
 **How to read its confidence.** Every behavioural claim in it is labelled `[verified]` (run on the
 pinned binary, output quoted), `[docs-0.38]` (read from correctly-versioned docs, not executed) or
-`[unverified]`. Only `[verified]` is safe to build a grader on. The survey states that a
-fact-check pass over its own text was still running when it was written, so it is not
-self-certified; §3 of this document's adjudication records the two places where its own tree-level
-claims do not survive contact with our task files.
+`[unverified]`. At `dac8118b` two further labels appear: `[verified, recon §1.4]` (measured on the
+pinned binary in an earlier session and carried forward, one tier below the two verify passes) and
+`[verified — this review]` (run against the same pinned binary during the adversarial review; trust
+it exactly as far as `[verified]`). Only the `[verified]` family is safe to build a grader on. The
+fact-check pass that was still running when the survey was first written has now landed, so
+`dac8118b` is self-certified in a way `0a8aab1b` was not — but it is still not tree-certified, and
+§3 of this document's adjudication records the two places where its own tree-level claims do not
+survive contact with our task files.
 
 ---
 
 ## 1. The design rules
 
-Six rules. Each is stated as a rule, then the measurement that produced it.
+Seven rules. Each is stated as a rule, then the measurement that produced it.
 
 ### R1 — The task must have a mental-model failure in it, not a flag to recall
 
@@ -218,6 +240,43 @@ tasks are in that state. Partial credit is also what makes failures legible: hai
 0.833 across five `squash_range` trials identified the failing assertion uniquely and told us it
 was a near-miss, not a collapse. The sweep's 37 non-passes were 16 zeros and 21 partials; without
 the partials, 21 of them would have been indistinguishable from a refusal.
+
+### R7 — Stand the fixture up on the real binary and solve it *before* writing the verifier
+
+*Hugh's rule, carried into this proposal.* For every new task: build the fixture, run at least one
+genuine solve against the real pinned binary, record what the repository actually looks like
+afterwards, and write the verifier against **that** observed end state. Never the other way round —
+a verifier drafted from the design sketch and a fixture built to satisfy it afterwards is the
+inverted order this rule exists to forbid.
+
+*Why.* A verifier written against an *imagined* end state encodes the imagination. It does not
+grade the task; it grades the author's mental model of the task, which means it passes that model
+and **fails correct solves that the model did not anticipate**. This is not a hypothetical: it is
+what the adversarial review of the survey found when it stopped desk-checking and started
+executing. Four of the 39 candidate themes were actually run, and one failed outright:
+
+- Theme 3.6 named **`jj op restore <pre-mistake op>`** as the solve for recovering from a
+  self-inflicted mistake. Measured on a `base → A → B` stack that was squashed and then built on
+  twice, that route **deletes both later commits** — precisely the failure the theme attributed to
+  `jj undo` and wrote itself to avoid. Only **`jj op revert <squash-op>`** reaches the stated end
+  state: `B` restored with its original change id *and* both later commits kept.
+- That correct route leaves a **divergent change**, and its offsets are **`X/0` and `X/4`**, not
+  `/0` and `/1`. A verifier hardcoding the latter — as a desk-written one naturally would, since
+  `/0` and `/1` is what every divergence example in the survey showed — breaks on the correct
+  solve. The offsets index the change's *evolution*, not its visible siblings.
+- Six of the eight theme defects the review found were desk-checkable from the text. **That one was
+  reachable only by running it.** No amount of re-reading produces it, because the whole error is a
+  gap between what the author believed the binary does and what it does.
+
+**A green pre-sweep pass cannot catch this**, and it fails for exactly the structural reason a
+missing `anchor_exemptions.json` is not caught (§5, prerequisite 3): the pre-sweep runs the
+verifier against the *untouched* image, and the untouched image never does the work. Only a correct
+solve walks the path where the imagined and the real end state diverge. A task can therefore be
+green on the floor measurement, green on the no-agent run, internally consistent on every desk
+check — and still fail every competent agent that solves it correctly.
+
+The rule is cheap relative to what it prevents. One solve per task, executed once at authoring
+time, is the only evidence that the thing being graded exists.
 
 ---
 
@@ -464,12 +523,18 @@ trivially distinguishable from the target one.
 ### 4.0.2 Verified facts that constrain these fixtures and verifiers
 
 From the survey's §9 corrections appendix — 22 documentation and tutorial claims refuted against
-the binary. These six would poison a fixture or a verifier in the set proposed below, and none of
+the binary. These seven would poison a fixture or a verifier in the set proposed below, and none of
 them was known when §4 was first drafted:
 
-1. **`??` marks a CONFLICTED BOOKMARK, not divergence.** Divergence renders as `X/0` / `X/1` plus a
-   `(divergent)` marker. Both tutorials get this wrong and they can appear on the same log line.
-   A divergence verifier that greps `??` grades the wrong thing.
+1. **`??` marks a CONFLICTED BOOKMARK, not divergence.** Divergence renders as numbered offsets
+   (`X/0`, `X/1`, …) plus a `(divergent)` marker. Both tutorials get this wrong and they can appear
+   on the same log line. A divergence verifier that greps `??` grades the wrong thing — *and so
+   does one that hardcodes the offsets.* **Corrected at `dac8118b`:** an earlier revision of this
+   list said divergence renders as "`X/0` / `X/1`", which is what every example showed and is not a
+   rule. The offsets index the change's **evolution**, not its visible siblings; a divergence
+   produced by `jj op revert` of a mid-history operation was measured at **`X/0` and `X/4`**. Spell
+   `change_id(X)`, or read the offsets the repository gives you at verification time. Never write
+   `/0` and `/1` into a verifier (R7).
 2. **A bare change-id revset ERRORS on a divergent change**, and a bare bookmark-name revset
    ERRORS on a conflicted bookmark — `Error: Change ID 'x' is divergent` / `Error: Name 'main' is
    conflicted`, both exit 1. `present(X)` does not help. Verifiers must spell `change_id(X)` and
@@ -497,6 +562,23 @@ them was known when §4 was first drafted:
    `jj config set --repo`, and any verifier that wants to know what an agent configured must
    *evaluate* the setting rather than read a file. N6 below already specifies evaluation; this is
    the reason it must.
+
+Two more that are not from the appendix, and that bite the *authoring* of a fixture rather than a
+claim in it. Both are cheap to hit and expensive to diagnose:
+
+8. **`jj squash --from/--into` opens the editor when BOTH commits carry a description**, to let you
+   combine them — so with no TTY it exits 1 rather than doing the squash
+   [verified in the survey's review pass, its §2.6 and its theme 1.2]. Any non-interactive fixture
+   step, and any scripted reference solve, must pass `-u`/`--use-destination-message` or `-m`.
+   This repo has already been bitten: `squash_range`'s
+   `test_target_commit_still_described_as_the_target` is a containment check rather than an
+   equality check precisely because the description-combining and the `-u` routes end up with
+   different descriptions (`tasks/squash_range/tests/test_final_state.py:320-336`).
+9. **Do NOT use `GIT_CONFIG_GLOBAL=/dev/null` for hermeticity.** A `git config --global` run under
+   that setting **rename-replaces the device node** — git writes a temp file and renames it over
+   the target, so the image ends up with a regular file where `/dev/null` was, and everything
+   downstream in that build that redirects to `/dev/null` silently accumulates into it instead.
+   Point `GIT_CONFIG_GLOBAL` at a scratch path inside the build.
 
 One more, for the anchor rather than the fixture: `jj config set --repo <key> <value>` does not
 validate key names — nonsense keys are accepted silently at exit 0. "The agent set a config key"
@@ -631,7 +713,7 @@ written in a user's voice, and it wins. Survey tiers: 1 = single operation, 2 = 
 |---|---|---|---|
 | N1 conflict propagates | 3.5 *resolve a propagated conflict once*, 2.4 *leave a conflict, build on it* | 3, 2 | Use the survey's. N1 conflates the two; they are better as one Tier 3 task, and 2.4 is a distinct and sharper Tier 2 |
 | N2 merge the agent creates | 1.5 *merge with ordered parents*, 4.2 *conflicted bookmark repair* | 1, 4 | N2 is a hybrid the menu lacks — a merge the agent **creates** *and* resolves. Keep N2's shape, take 1.5's `parents.map(...)` grading |
-| N3 evolog as recovery | 3.6 *recover from your own mistake*, 5.5 *which operation lost this file* | 3, 5 | Use 3.6. It is the deeper composition and the survey flags it as the tier's highest grader-artifact risk, with the mitigation (change-id replay, no string matching) |
+| N3 evolog as recovery | 3.6 *recover from your own mistake*, 5.5 *which operation lost this file* | 3, 5 | Use 3.6. Deeper composition; the tier's highest grader-artifact risk, mitigated by change-id replay and no string matching. **Take the `dac8118b` version, not `0a8aab1b`'s:** the review pass ran this theme and found its named solve wrong — `jj op restore` deletes the later work, only `jj op revert <squash-op>` reaches the end state, and the correct route leaves a divergent change at offsets `X/0`/`X/4`, so grade through `change_id()` and decide whether the residual divergence is acceptable end state. It also needs an anchor-exemption decision |
 | N4 revsets the agent writes | 5.3, 5.4, 5.6; 3.7 *messy history → mergeable* | 5, 3 | Prefer 3.7: it makes the revset the *route* to an action rather than the deliverable, which dodges the zero-tool-call confound |
 | N5 filesets | 2.1 *split by path* is the nearest | 2 | No dedicated fileset theme in the menu. N5 is additive; keep it |
 | N6 immutability | none dedicated (5.4 uses `immutable()` as a query only) | — | **Additive.** The survey names immutability as hole C but ships no theme for it. N6 stands, and its "evaluate the alias, don't string-match the config" design is now mandatory (§4.0.2 #7) |
@@ -750,7 +832,8 @@ as hygiene and leave it in the sweep.
 *One place the survey is wrong, recorded so this document does not propagate it.* The survey lists
 a stale working copy as **NOT REPRODUCED** against the binary and marks the staleness error text
 `[unverified]`, on the strength of one probe that mutated the default workspace's working-copy
-commit from a second workspace. That is refuted, now by measurement and not just by reading our
+commit from a second workspace. *This claim survives unchanged at `dac8118b`* — the review pass did
+not touch it, so the correction below still stands and still has to be carried by hand. That is refuted, now by measurement and not just by reading our
 tree: staleness reproduces **deterministically** on 0.38.0 in this repo's own fixture.
 `workspace_update_stale`'s bootstrap produces it at `environment/Dockerfile:49` by running
 `jj rebase -r default@ -d @` **from the second workspace**, and `jj st` in the project then exits 1
@@ -775,9 +858,11 @@ Net effect on the headline: **24 shipping tasks, 14 kept and 10 new, drawn from 
 and of the 14, five carry an explicit expiry condition (`workspace_update_stale` no longer among
 them — see the correction above).
 
-**What it costs.** *Revised: sixteen* new bootstraps, verifiers, floor files and a measured
-no-agent run each, of which ten ship — and six of the sixteen are Tier 3 fixtures, which are the
-expensive ones. The 24 cuts and 7 merges are deletions. Prerequisites, all precedented in-tree:
+**What it costs.** *Revised: sixteen* new bootstraps, verifiers, floor files, a measured no-agent
+run each and — per R7 — at least one genuine solve executed against the pinned binary before the
+verifier is written, of which ten ship; six of the sixteen are Tier 3 fixtures, which are the
+expensive ones on every one of those lines. The 24 cuts and 7 merges are deletions. Prerequisites,
+all precedented in-tree:
 
 1. The mechanical `@`-relaxation on the ten incidental pins, reusing
    `restore_interactive:199-201`'s `({handover}) & ::@` pattern. This is the single
@@ -787,20 +872,28 @@ expensive ones. The 24 cuts and 7 merges are deletions. Prerequisites, all prece
    written in a user's voice fails the lint today. The rule has to change with the prompts, or
    the format keeps two token headings and re-invites the spec voice.
 3. *Added during reconciliation:* an `anchor_exemptions.json` decision for every new task whose
-   asked-for work legitimately removes a change id. On the current menu that is N8/theme 4.3
-   (abandon a divergent side) and theme 4.8 (withdraw an experiment), and the general list of
+   asked-for work legitimately removes a change id. On the current menu that is N8/themes 2.7 and
+   4.3 (clear or abandon a divergent side), theme 4.8 (withdraw an experiment) and — added at
+   `dac8118b` — theme 3.6, whose solve is `jj op revert` and whose op-recovery route is on the
+   id-dropping list; the survey says measure it rather than assume. The general list of
    id-dropping operations measured on 0.38 is `jj abandon`, `jj squash --from B --into A`,
    `jj new`/`edit`/`prev`/`next` off an empty undescribed `@`, `jj workspace forget` and
    `jj op restore`. A green pre-sweep pass **cannot** detect a missing exemption, because the
    untouched image never does the work that breaks the assertion — only a correct solve reveals it,
    and one absent file already made `git_import` unpassable in all 11 arms of a sweep, control
-   included.
+   included. This is the same structural blind spot R7 is written against, and the R7 solve is
+   where the measurement gets taken.
 4. *Added during reconciliation:* a decision on the pin. The survey argues for re-pinning off
    0.38.0 (six releases stale) before authoring, on the grounds that the authoring cost is near
    zero now and enormous once sixteen fixtures exist, and that several things it documents as
    hidden-but-functional on 0.38 — `--allow-new`, `jj op undo`, `git_head()`, `git_refs()`,
-   `diff_contains()`, `ui.revsets-use-glob-by-default` — are **removed** by 0.42/0.43. Its sharpest
-   case is `jj next -n 2` (§4.0.1): the newer spelling *succeeds with different semantics* on 0.38,
+   `diff_contains()`, `ui.revsets-use-glob-by-default` — are **removed** by 0.42/0.43.
+   *Corrected at `dac8118b`:* the review pass relabelled that removal list **`[unverified]`** — it
+   was read from the later releases' docs and their own removal warnings, and **no 0.42+ binary was
+   run**. Treat it as the reason to re-pin *and check*, not as a settled fact; if we re-pin, run
+   each of those six against the new binary before any fixture depends on the answer (R7). Its
+   sharpest case is `jj next -n 2` (§4.0.1): the newer spelling *succeeds with different semantics*
+   on 0.38,
    so a task built on it discriminates on version drift rather than on jj understanding. This
    proposal takes no position on re-pinning, but the choice has to be made **before** authoring,
    and if we stay at 0.38 we should decide explicitly whether version-drift traps are features of

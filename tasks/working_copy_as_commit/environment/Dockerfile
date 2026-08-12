@@ -38,4 +38,13 @@ LABEL Description="jj repository initialization and working copy demonstration"
 #   - jj installed
 #   - /home/user directory created
 
+# Where the agent starts -- same reasoning as every other task here: without a
+# WORKDIR the agent process lands at the filesystem root, because harbor passes
+# no `-w` to `docker exec` and no task.toml sets [environment] workdir. This
+# task ships no repository: the agent initialises /home/user/repo itself. WORKDIR
+# creates the empty directory, which is what the other init-from-scratch tasks
+# (template_formatting, git_remote_add) already ship,
+# so this line lands the agent in the directory the instruction names.
+WORKDIR /home/user/repo
+
 CMD ["/bin/bash", "-c", "trap : TERM INT; sleep infinity & wait"]

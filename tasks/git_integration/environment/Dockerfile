@@ -55,4 +55,13 @@ RUN git config --global user.name "Your Name" && \
 #   - git installed
 #   - /home/user/remote.git  — bare git repository with one commit
 
+# Where the agent starts -- same reasoning as every other task here: without a
+# WORKDIR the agent process lands at the filesystem root, because harbor passes
+# no `-w` to `docker exec` and no task.toml sets [environment] workdir. This
+# task ships no repository: /home/user/repo is the thing the agent clones, and
+# bootstrap/test_initial_state.py asserts it does not exist before the run,
+# which a WORKDIR pointed at it would falsify.
+# so this line lands the agent in its parent, one `jj git clone` away from the repository.
+WORKDIR /home/user
+
 CMD ["/bin/bash", "-c", "trap : TERM INT; sleep infinity & wait"]

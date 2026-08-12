@@ -46,4 +46,13 @@ RUN mkdir -p /home/user/repo && \
 #   - /home/user/repo - jj initialized repository
 #   - /home/user/repo/deeply/nested/dir - nested directory within the workspace
 
+# Where the agent starts. Harbor passes no `-w` to `docker exec` and no
+# task.toml sets [environment] workdir, so the agent process inherits the
+# image's working directory -- and with no WORKDIR anywhere in the chain up to
+# the base image, that was the filesystem root. Pointing it at the project
+# makes the starting state the one a developer actually has: standing in the
+# repository the task is about. The instruction still names the absolute path,
+# so nothing in the task or the verifier depends on this.
+WORKDIR /home/user/repo
+
 CMD ["/bin/bash", "-c", "trap : TERM INT; sleep infinity & wait"]

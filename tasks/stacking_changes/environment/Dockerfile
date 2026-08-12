@@ -46,4 +46,13 @@ RUN mkdir -p /home/user/repo && \
     echo "content3" > feature3.txt && \
     jj new
 
+# Where the agent starts. Harbor passes no `-w` to `docker exec` and no
+# task.toml sets [environment] workdir, so the agent process inherits the
+# image's working directory -- which the build left at /home/user, one level
+# above the repository. Pointing it at the project makes the starting state the
+# one a developer actually has: standing in the repository the task is about.
+# The instruction still names the absolute path, so nothing in the task or the
+# verifier depends on this.
+WORKDIR /home/user/repo
+
 CMD ["/bin/bash"]

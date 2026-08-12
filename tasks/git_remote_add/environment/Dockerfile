@@ -43,4 +43,12 @@ RUN mkdir -p /home/user/myproject && \
 #   - /home/user/myproject - empty project directory
 #   - Global jj config set for user name and email
 
+# Where the agent starts -- same reasoning as every other task here: without a
+# WORKDIR the agent process lands at the filesystem root, because harbor passes
+# no `-w` to `docker exec` and no task.toml sets [environment] workdir. This
+# task ships no repository: the empty /home/user/myproject already in the image is
+# where the agent runs `jj git init`,
+# so this line lands the agent in the directory the instruction names.
+WORKDIR /home/user/myproject
+
 CMD ["/bin/bash", "-c", "trap : TERM INT; sleep infinity & wait"]

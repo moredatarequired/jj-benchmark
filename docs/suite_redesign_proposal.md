@@ -8,7 +8,7 @@ nothing currently touches. **Target: 24 tasks — 14 kept, 10 new.**
 *This target survived reconciliation against the binary-verified capability survey (§0), with
 three amendments to how it is reached rather than to the number: author ~16 new tasks and ship the
 10 that measurably discriminate; require at least six of the ten to compose five or more dependent
-operations; and treat six of the 14 kept as provisional. §5.1 has the argument.*
+operations; and treat five of the 14 kept as provisional. §5.1 has the argument.*
 
 The case for cutting that hard is not that the tasks are badly written, though many are. It
 is that the suite has almost stopped measuring anything:
@@ -106,16 +106,32 @@ commits rather than one at a time" — that sentence is the task.
 | `git_integration` | `git show-ref --verify refs/heads/my-feature` inside `remote.git` (`tests/test_final_state.py:29-35`) — `git branch my-feature` satisfies it |
 | `git_remote_add` | `"origin" not in stdout` of `jj git remote list` (`tests/test_final_state.py:27`) |
 | `diffedit_interactive` | Greps `jj show` stdout for `def foo():` / `def bar():` (`tests/test_final_state.py:51-54`) |
-| `workspace_update_stale` | `"stale" not in result.stderr.lower()` after `jj st` (`tests/test_final_state.py:86-90`) — jj's English, on a scored test |
 
-*Corrected against the binary-verified survey.* The `workspace_update_stale` row is new. An
-earlier draft of this document listed that task as sound on all four axes and put it in the
-shipping 14; it is not. `vacuity_floor.json` reads 3 tests / 0 floor, so **all three of its tests
-are scored**, and `test_no_stale_error` is an English assertion on jj's stderr. It also grades a
-description substring (`test_commit_message`, `"Activate config" in result.stdout`, `:117`). The three
-`assert_descends_from_the_handover` calls are properly anchored and are the reason the task is
-worth repairing rather than cutting, but the English and description assertions have to go the way
-`undo_mistaken_rebase`'s did. See §5 for what this does to its place in the target set.
+*Corrected against a container measurement — the `workspace_update_stale` row that stood here is
+withdrawn.* A prior revision of this document added that task to the table on the strength of
+`test_no_stale_error`'s stderr grep and called `test_commit_message`'s description check a second
+English dependency. Both claims were overstated, and the task has now been measured in a real
+container built from its own `environment/Dockerfile` on the pinned jj 0.38.0.
+
+- `vacuity_floor.json` does read 3 tests / 0 floor, so all three tests are scored, and
+  `test_final_state.py:89` does read jj's stderr for `stale`. But `:88` already asserts that
+  `jj st` exited 0, and on 0.38 a stale working copy makes `jj st` exit **1**. The prose read
+  therefore sits behind the exit code: it cannot let a wrong solve through, and its only reachable
+  failure mode is a **false negative** — some future jj printing "stale" on an exit-0 `jj st`
+  (an advisory about a *sibling* workspace, say) would fail a correct answer. The recommendation is
+  to **delete `:89` and keep the exit-code assertion**. That is verifier hygiene, not the repair of
+  a hole, and it does not make the task suspect.
+- `test_final_state.py:117` (`"Activate config" in result.stdout` out of `-T description`) is **not**
+  an English-grading dependency and should not have been listed as one. `-T description` is a
+  template field rather than prose, and `Activate config` is text the *instruction mandates the
+  agent write* (`instruction.md:4`, "the exact description"). It is a data check on agent-authored
+  content. The only tightening available is exact-match instead of substring.
+- Measured on the untouched image: `bootstrap/test_initial_state.py` passes 5/5; `tests/test.sh`
+  scores the untouched image **0** (all three scored tests fail) and a genuine
+  `update-stale` → edit → `jj commit` solve **1**.
+
+The three `assert_descends_from_the_handover` calls are properly anchored. The task is sound on all
+four axes and keeps its place in the shipping 14; see §5.
 
 Position is the same failure in a different costume, and the suite has already paid for it three
 times, each with the measurement recorded in the verifier's own docstring:
@@ -292,7 +308,7 @@ second filter.
 | `revert_file` | Three files, two source revisions, one left alone, plus a description — the strongest plain-restore fixture |
 | `bookmark_create_and_move` | Ancestor-of rather than equals (`:71`), so both the `jj new` + `bookmark move` and `jj commit` routes pass |
 | `workspace_add` | `assert_backed_by_the_project_repo` (`:82`) closes the `jj git init` cheat |
-| `workspace_update_stale` | Genuinely distinct (stale working copy); needs the `@-` positional relaxed — **and, corrected against the survey, needs `test_no_stale_error`'s English assertion and `test_commit_message`'s description grep removed too** (§1, R2). All three of its tests are scored |
+| `workspace_update_stale` | Genuinely distinct (stale working copy); needs the `@-` positional relaxed, and `test_no_stale_error:89`'s redundant stderr grep deleted as hygiene — the exit-code assertion above it already does the discriminating (R2, corrected). All three of its tests are scored; measured 0 on the untouched image, 1 on a genuine solve |
 | `git_fetch_remote` | Fetch + rebase onto a remote-only bookmark + push, graded by commit id, with an anti-cheat guard |
 | `git_export` | `git rev-parse` compared to the resolved commit id |
 | `obslog_view` | Recomputes the evolution with `jj evolog` at verification time; the answer cannot be hardcoded |
@@ -721,26 +737,43 @@ distinction that justifies keeping them is coverage, not power, and it is tempor
 five have a deeper replacement on the survey's menu (3.3 for absorb, 3.6 for op-log recovery, 4.1
 and 4.4 for fetch-and-reconcile). Only `workspace_add` has none, because the menu has no workspace
 theme at all. **They leave when their replacements land and screen well, and not before.**
-`workspace_update_stale` is the sixth question mark and a different one: it did separate, but a
-third of its scored credit rides on an English assertion (§1, R2), so part of the separation it
-shows may be a grader artifact. Repair it before the screening sweep, then re-measure; if the
-separation was the English, it belongs in the smoke tier too.
+
+*Corrected against a container measurement.* A prior revision made `workspace_update_stale` a sixth
+question mark here, on the theory that a third of its scored credit rode on an English assertion and
+that part of its separation might therefore be a grader artifact. That is withdrawn (R2). None of
+its scored credit turns on jj's prose: the stderr grep at `test_final_state.py:89` is redundant
+behind the exit-code assertion at `:88`, and the `Activate config` check at `:117` grades
+agent-authored text the instruction mandates. The task separated, it is anchored, and the untouched
+image scores 0 against a genuine solve's 1. It is a full keep, not a provisional one — delete `:89`
+as hygiene and leave it in the sweep.
 
 *One place the survey is wrong, recorded so this document does not propagate it.* The survey lists
 a stale working copy as **NOT REPRODUCED** against the binary and marks the staleness error text
 `[unverified]`, on the strength of one probe that mutated the default workspace's working-copy
-commit from a second workspace. Our tree contradicts that: `workspace_update_stale`'s fixture
-produces a stale working copy at `environment/Dockerfile:45-49` by running `jj rebase -r default@
--d @` **from the second workspace**, and `bootstrap/test_initial_state.py:20-23` asserts that
-`jj st` in the project then exits non-zero with `stale` in its output. That bootstrap test is part
-of the image build. The survey's probe evidently used a different mutation or read `jj st` from the
-wrong workspace; the correct statement is that the route is `jj rebase -r <workspace>@`, not that
-staleness cannot be reproduced. This does not rescue the English assertion in the *verifier* —
-grading jj's stderr text is wrong for the reason `undo_mistaken_rebase` is the reference case —
-but it does mean the task's premise is sound and the task is worth repairing rather than cutting.
+commit from a second workspace. That is refuted, now by measurement and not just by reading our
+tree: staleness reproduces **deterministically** on 0.38.0 in this repo's own fixture.
+`workspace_update_stale`'s bootstrap produces it at `environment/Dockerfile:49` by running
+`jj rebase -r default@ -d @` **from the second workspace**, and `jj st` in the project then exits 1
+with, verbatim on 0.38.0:
+
+```
+Error: The working copy is stale (not updated since operation <id>).
+Hint: Run `jj workspace update-stale` to update it.
+```
+
+All of that goes to stderr (as does the docs link jj prints after it); stdout is empty.
+`bootstrap/test_initial_state.py:20-23` asserts exactly
+this and passes as part of the image build. The survey's probe evidently used a different mutation
+or read `jj st` from the wrong workspace; the correct statement is that the route is
+`jj rebase -r <workspace>@`, not that staleness cannot be reproduced, and the error text is
+verified rather than `[unverified]`. Note that this also settles the verifier question rather than
+leaving it open: because a stale working copy exits non-zero, the exit-code assertion at
+`test_final_state.py:88` is the discriminator and the stderr grep on the line below it is dead
+weight to be deleted, not a prose dependency to be engineered around (R2, corrected).
 
 Net effect on the headline: **24 shipping tasks, 14 kept and 10 new, drawn from ~16 authored** —
-and of the 14, five (six counting `workspace_update_stale`) carry an explicit expiry condition.
+and of the 14, five carry an explicit expiry condition (`workspace_update_stale` no longer among
+them — see the correction above).
 
 **What it costs.** *Revised: sixteen* new bootstraps, verifiers, floor files and a measured
 no-agent run each, of which ten ship — and six of the sixteen are Tier 3 fixtures, which are the

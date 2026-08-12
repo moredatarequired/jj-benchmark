@@ -131,11 +131,110 @@ end to end.
 
 **A missing anchor abstains, it does not fail.** `tests/anchor.py` prints why and passes
 when the file is absent, unparseable, or records `anchored: false` — the last being the
-three tasks whose bootstrap ships an empty directory, where creating the repository *is*
-the task (`git_remote_add`, `template_formatting`, `working_copy_as_commit`). An anchor
+four tasks whose bootstrap ships no jj repository, where creating it *is* the task
+(`git_remote_add`, `template_formatting`, `working_copy_as_commit`, and — measured, not
+inferred — `git_integration`, whose bootstrap ships only a bare git repo). An anchor
 that is not there is an infrastructure condition, and a rollout in which one missing file
 zeroes every trial is worse than the vulnerability it closes. `--check` and
 `--verify-untouched` are what make that loud, on the host, where it can be fixed.
+
+### Commits a task is *allowed* to remove: `tests/anchor_exemptions.json`
+
+Several jj operations legitimately make a change id stop resolving, so the strict check
+above would score some **correct** solves 0. Measured on jj 0.38.0: `jj abandon` removes
+the id; `jj squash --from B --into A` removes B's (and squashing the working copy into an
+ancestor removes the working copy's, because jj abandons the emptied source and mints a
+fresh working-copy commit); `jj new` / `jj edit` / `jj prev` / `jj next` moving off an
+**empty, undescribed** working copy to anywhere that is not its descendant makes jj
+auto-abandon it; `jj workspace forget` removes that workspace's working copy; and
+`jj op restore` removes everything created after the operation restored to.
+
+So `abandon_commits` is two abandons, `squash_range`'s own
+`test_fix_commits_are_no_longer_visible` **asserts** those ids are gone, and
+`next_prev_navigation` is entirely about walking the working copy off an empty commit.
+
+The escape hatch is a per-task, hand-written, committed file —
+`tasks/<task>/tests/anchor_exemptions.json` — that names each such commit **with a
+one-line reason**, so the file is its own review record:
+
+```json
+{
+  "task": "abandon_commits",
+  "may_disappear": [
+    {"description": "commit B",
+     "reason": "Requirement 1 IS `jj abandon` of this commit, so its change id necessarily stops resolving."}
+  ],
+  "may_be_divergent": [],
+  "maintained_by": "hand-written, reviewed against instruction.md"
+}
+```
+
+An entry names its commit by `description` (the same key `anchored_change_id()` uses) or
+by `working_copy` (a workspace *name*, for an undescribed working-copy commit). An
+exempted change id may be absent **or** present; nothing else about the anchor is
+relaxed, and **the handover-operation check is never exempted on any task**, so
+wipe-and-rebuild is still caught everywhere. `may_be_divergent` is the separate flag for
+`concurrent_operations`, whose instruction deliberately makes one change divergent partway
+through.
+
+The file is optional — absent means "nothing this task asks for removes a bootstrap
+commit", which is true of 39 of the 53 tasks. `scripts/lint_tasks.py` enforces the schema
+and prints every exemption and its reason on every CI run; `scripts/bootstrap_anchor.py
+--write/--check` cross-checks each entry against the measured bootstrap, so an entry that
+names nothing (or two things) fails on the host. A stale exemption file makes
+`tests/anchor.py` *abstain* rather than fail, which `--verify-untouched` reports as a
+problem because it asserts the anchor **holds**.
+
+**Why not simply relax the invariant to "resolved at the handover operation".** Because
+operations are append-only, so the pure-jj rebuild route (`jj new -r 'root()'` +
+`jj restore --from <rev>`, then `jj abandon` the originals) leaves the handover operation
+and all of its commits resolvable *at that operation*. That route has been observed
+scoring reward 1.0 in a real sweep, and the weakened invariant passes it. Measured on
+`abandon_commits`: reward 1.0 before the anchor, 0 with it. So the strict "resolves now"
+check is kept everywhere, and weakened only for a named commit with a written reason.
+
+### Telling an anchor failure from a task failure, out of `ctrf.json`
+
+A missed exemption would produce a false zero that looks exactly like a model failing the
+task. So every violation message starts with the token `BOOTSTRAP_ANCHOR_VIOLATION`
+followed by `codes=` (`ANCHOR-CHANGE-ID-MISSING`, `ANCHOR-CHANGE-ID-DIVERGENT`,
+`ANCHOR-HANDOVER-OP-GONE`, `ANCHOR-REPO-GONE`, `ANCHOR-REPO-UNREADABLE`), and
+`pytest-json-ctrf` records the rendered message in the `trace` field of **every** test
+entry. So one grep over a finished sweep finds every trial the anchor zeroed:
+
+```bash
+grep -l BOOTSTRAP_ANCHOR_VIOLATION */*/verifier/ctrf.json
+```
+
+A missed exemption shows up as `ANCHOR-CHANGE-ID-MISSING` on its own; a rebuild brings
+`ANCHOR-HANDOVER-OP-GONE` with it. The token is never printed on the holds or abstain
+paths.
+
+### The mandatory idiom for per-task assertions
+
+`anchored_change_id()` raises `AnchorUnavailable` when there is no anchor — and there is
+none in CI, which always builds cold, nor in any sweep run without `--write`. A verifier
+that calls it bare is therefore broken in CI. Use the fallback resolvers instead:
+
+```python
+from anchor import change_id_or_fallback, working_copy_or_fallback
+
+TARGET = change_id_or_fallback("Base", 'description(substring:"Base")')
+WC     = working_copy_or_fallback("@", workspace="default")
+```
+
+Each returns the anchored change id when the anchor can supply it and otherwise returns
+the description-based revset the test used before, after printing a line that says the
+identity claim was **not** made. The assertion is then exactly as strong as it was before
+the anchor existed — never weaker, and never an error.
+
+`working_copy_or_fallback` exists because anchor keys are description *first lines*, and
+`""` is not a unique key: `workspace_forget`'s bootstrap holds two commits described `""`,
+`resolve_tool`'s holds three, and `restore_file_from_parent`'s, `stacking_changes`' and
+`workspace_update_stale`'s hold two each. The anchor therefore records the handover `@` of
+every workspace under a reserved `working_copies` key, addressed by workspace name.
+`anchored_change_id("")` **fails loudly** on an ambiguous description and points at that
+key rather than silently picking one of the candidates.
 
 **One hard rule if you edit `tests/conftest.py`.** It must stay import-trivial. An
 exception raised while pytest is *importing* conftest makes pytest exit 4 having reported
@@ -150,7 +249,18 @@ not prove they are the commits the verifier graded. An agent can fabricate a par
 stack from `root()`, move the bookmarks onto it and destroy nothing — every anchored
 change id is still visible, so the fixture holds. Closing that needs each task's scored
 assertions to address the graded commit by its anchored change id, for which
-`tests/anchor.py` exposes `anchored_change_id(description)`.
+`tests/anchor.py` exposes `anchored_change_id(description)` (through
+`change_id_or_fallback`, per the idiom above).
+
+Two smaller residuals, stated rather than hidden. On the 10 tasks whose handover working
+copy is exempt, that one empty undescribed commit is no longer evidence — it carries no
+content, and jj discards it silently on any `jj new`/`jj edit`, so requiring it would fail
+honest solves. And on the ~7 tasks whose only bootstrap commit *is* an empty undescribed
+working copy (`describe_commit`, `new_commit`, `workspace_add`, `log_template_author`,
+`template_customize_log_output`, `workspace_root`, `bookmark_create_and_move`) it is
+deliberately **not** exempt, because it is the graded object — with the consequence that an
+agent who solves such a task by creating a *new* commit instead of describing the one it
+was handed now scores 0. That is a scoring-shape change, and it is intended.
 
 ### Evaluation Details
 

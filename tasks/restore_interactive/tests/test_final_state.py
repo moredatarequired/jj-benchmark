@@ -9,11 +9,33 @@ human-readable prose. The one place where jj output is parsed at all,
 `descriptions()` and `changed_paths()`, uses an explicit template and
 `--name-only`, whose output is data (descriptions, paths) rather than English.
 
-Note on revision addressing: `test_history_shape` pins the four commits above
-the root to the linear chain ending at `@`, in order, by description. Every
-other test therefore addresses them positionally -- `@---` is `Initial
-commit`, `@--` is `remove legacy module`, `@-` is `add logging` -- which avoids
-depending on jj's revset string-pattern defaults.
+REVISION ADDRESSING: WHY THE POSITIONAL REVSETS ARE GONE
+=======================================================
+
+The previous version addressed the four commits POSITIONALLY -- `@---` was
+`Initial commit`, `@--` was `remove legacy module`, `@-` was `add logging` --
+and relied on the floored test_history_shape to pin those positions to the right
+commits. That is the wrong place for the check to live, because a floored test
+earns no credit: an agent could build a fabricated four-commit chain from
+`root()`, park `@` on it, leave the bootstrap's four commits untouched beside it
+-- so the session-scoped anchor fixture still holds, nothing having been
+destroyed -- and every positional revset would then resolve into the fabrication.
+Measured: 6 of 6 scored tests passed that way, i.e. all the credit there is.
+
+So the four graded commits are now resolved by the change ids the BOOTSTRAP gave
+them. A jj change id is generated randomly at commit creation and preserved by
+rebase / squash / describe, so it names the commit the task handed over and no
+commit created afterwards can carry it.
+
+graded() and handover_working_copy() go through anchor.py's fallback resolvers,
+which is what keeps this working in CI: bootstrap_anchor.json is a per-build
+artifact, gitignored and absent in CI (which always builds cold). When it is
+missing the resolver prints that the identity claim is NOT being made and returns
+the positional revset this file used before, so every assertion degrades to
+exactly its old strength -- never weaker, and never an error.
+
+Test names and count are unchanged, so tests/vacuity_floor.json does not move.
+test_history_shape stays floored and is left exactly as it was.
 """
 
 import os
@@ -21,11 +43,18 @@ import subprocess
 
 import pytest
 
+from anchor import change_id_or_fallback, working_copy_or_fallback
+
 PROJECT_DIR = "/home/user/myproject"
 
-REV_INITIAL = "@---"
-REV_CLEANUP = "@--"
-REV_LOGGING = "@-"
+INITIAL = "Initial commit"
+CLEANUP = "remove legacy module"
+LOGGING = "add logging"
+
+# The position each commit occupied in the handover chain. Used ONLY as the
+# fallback when there is no anchor file, i.e. it reproduces exactly what this
+# file asserted before the anchor existed.
+FALLBACK_POSITION = {INITIAL: "@---", CLEANUP: "@--", LOGGING: "@-"}
 
 EXPECTED_DESCRIPTIONS = [
     "Initial commit",
@@ -42,11 +71,53 @@ MAIN_AFTER_LOGGING = (
 )
 NOTES_TXT = "todo: review the release checklist\n"
 
+_snapshotted = False
+
+
+def snapshot_working_copy():
+    """Take the ONE working-copy snapshot this verifier is allowed, explicitly.
+
+    The bootstrap leaves notes.txt written but unsnapshotted, and the solve may
+    add nothing further to the working copy, so `@`'s stored tree only reflects
+    the checked-out files once jj snapshots. Every jj call below passes
+    --ignore-working-copy -- otherwise the verifier mutates the repository it is
+    grading and can disagree with its own second run -- so the snapshot has to be
+    taken deliberately, once. It preserves change ids, so it cannot disturb the
+    anchor, and it is the same single snapshot the previous version of this file
+    took implicitly on its first jj call.
+    """
+    global _snapshotted
+    if not _snapshotted:
+        subprocess.run(["jj", "status"], cwd=PROJECT_DIR,
+                       capture_output=True, text=True)
+        _snapshotted = True
+
+
+def graded(description):
+    """The bootstrap's change id for `description`, or its handover position."""
+    return change_id_or_fallback(
+        description, FALLBACK_POSITION[description], repo=PROJECT_DIR)
+
+
+def handover_working_copy():
+    """The change id of the `@` the bootstrap handed over, or `@` itself.
+
+    Anchor keys are description first lines and this bootstrap's working copy is
+    undescribed, so the workspace name is the only unique key for it.
+    """
+    return working_copy_or_fallback("@", repo=PROJECT_DIR)
+
 
 def jj(*args):
-    """Run a jj command in the project and return the CompletedProcess."""
+    """Run a read-only jj command in the project and return the CompletedProcess.
+
+    --ignore-working-copy on every call: a plain jj read snapshots first, which
+    appends an operation and rewrites `@`. See snapshot_working_copy() for the
+    one deliberate exception.
+    """
     return subprocess.run(
-        ["jj", *args], cwd=PROJECT_DIR, capture_output=True, text=True
+        ["jj", "--ignore-working-copy", *args],
+        cwd=PROJECT_DIR, capture_output=True, text=True,
     )
 
 
@@ -77,6 +148,11 @@ def descriptions(revset):
     return [line[1:-1] for line in lines]
 
 
+def change_ids(revset):
+    out = jj_ok("log", "-r", revset, "--no-graph", "-T", 'change_id ++ "\\n"')
+    return [line for line in out.splitlines() if line]
+
+
 def changed_paths(rev):
     """The set of paths a revision changes relative to its parent."""
     out = jj_ok("diff", "-r", rev, "--name-only")
@@ -98,6 +174,24 @@ def file_at(rev, path):
     return result.stdout
 
 
+def assert_is_the_handover_working_copy():
+    """`@` must still be the working-copy commit the bootstrap handed over.
+
+    This is the identity claim that makes the disk-level and working-copy-level
+    assertions below mean something: without it they are satisfied by any commit
+    with the right tree, including one fabricated from `root()`.
+    """
+    snapshot_working_copy()
+    handover = handover_working_copy()
+    here, there = change_ids("@"), change_ids(handover)
+    assert here == there, (
+        f"`@` is {here}, but the working copy the bootstrap handed over is "
+        f"{there}. Fixing the mid-stack commit rebases the working copy and "
+        "preserves its change id, so `@` has to still be that change."
+    )
+    return handover
+
+
 def test_history_shape():
     """Exactly the original four commits, in the original order, still exist."""
     chain = descriptions("::@ ~ root()")
@@ -114,12 +208,14 @@ def test_history_shape():
 
 def test_settings_restored_into_cleanup_commit():
     """`remove legacy module` contains settings.toml with the original content."""
-    assert "settings.toml" in tree_paths(REV_CLEANUP), (
-        "`settings.toml` is still missing from the `remove legacy module` commit."
+    cleanup = graded(CLEANUP)
+    assert "settings.toml" in tree_paths(cleanup), (
+        "`settings.toml` is still missing from the bootstrap's own "
+        f"`remove legacy module` commit ({cleanup})."
     )
-    assert file_at(REV_CLEANUP, "settings.toml") == SETTINGS_TOML, (
-        "`settings.toml` in the `remove legacy module` commit does not have the "
-        "content it has in `Initial commit`."
+    assert file_at(cleanup, "settings.toml") == SETTINGS_TOML, (
+        f"`settings.toml` in the bootstrap's `remove legacy module` commit "
+        f"({cleanup}) does not have the content it has in `Initial commit`."
     )
 
 
@@ -130,75 +226,99 @@ def test_cleanup_commit_no_longer_deletes_settings():
     solution which "fixed" things by rewriting `Initial commit` instead cannot
     pass; the parent's content is pinned separately below.
     """
-    assert file_at(REV_INITIAL, "settings.toml") == SETTINGS_TOML, (
-        "`settings.toml` in `Initial commit` was modified; it must be left alone."
+    initial, cleanup = graded(INITIAL), graded(CLEANUP)
+    assert file_at(initial, "settings.toml") == SETTINGS_TOML, (
+        f"`settings.toml` in the bootstrap's `Initial commit` ({initial}) was "
+        "modified; it must be left alone."
     )
-    assert file_at(REV_CLEANUP, "settings.toml") == file_at(
-        REV_INITIAL, "settings.toml"
-    ), "The `remove legacy module` commit still changes `settings.toml`."
-    assert "settings.toml" not in changed_paths(REV_CLEANUP), (
-        "The `remove legacy module` commit must no longer touch `settings.toml`, "
-        f"but it changes: {sorted(changed_paths(REV_CLEANUP))}"
+    assert file_at(cleanup, "settings.toml") == file_at(
+        initial, "settings.toml"
+    ), (
+        f"The bootstrap's `remove legacy module` commit ({cleanup}) still changes "
+        "`settings.toml`."
+    )
+    assert "settings.toml" not in changed_paths(cleanup), (
+        f"The bootstrap's `remove legacy module` commit ({cleanup}) must no "
+        "longer touch `settings.toml`, but it changes: "
+        f"{sorted(changed_paths(cleanup))}"
     )
 
 
 def test_cleanup_commit_keeps_its_own_changes():
     """The rest of that commit is untouched: legacy.py gone, main.py rewritten."""
-    assert "legacy.py" in tree_paths(REV_INITIAL), (
-        "`legacy.py` is missing from `Initial commit`; that commit must be left alone."
+    initial, cleanup = graded(INITIAL), graded(CLEANUP)
+    assert "legacy.py" in tree_paths(initial), (
+        f"`legacy.py` is missing from the bootstrap's `Initial commit` "
+        f"({initial}); that commit must be left alone."
     )
-    assert file_at(REV_INITIAL, "main.py") == MAIN_INITIAL, (
-        "`main.py` in `Initial commit` was modified; it must be left alone."
+    assert file_at(initial, "main.py") == MAIN_INITIAL, (
+        f"`main.py` in the bootstrap's `Initial commit` ({initial}) was modified; "
+        "it must be left alone."
     )
-    assert "legacy.py" not in tree_paths(REV_CLEANUP), (
-        "`legacy.py` must still be deleted by the `remove legacy module` commit."
+    assert "legacy.py" not in tree_paths(cleanup), (
+        "`legacy.py` must still be deleted by the bootstrap's "
+        f"`remove legacy module` commit ({cleanup})."
     )
-    assert file_at(REV_CLEANUP, "main.py") == MAIN_AFTER_CLEANUP, (
-        "The `remove legacy module` commit's change to `main.py` was altered."
+    assert file_at(cleanup, "main.py") == MAIN_AFTER_CLEANUP, (
+        f"The bootstrap's `remove legacy module` commit ({cleanup}) had its "
+        "change to `main.py` altered."
     )
-    assert changed_paths(REV_CLEANUP) == {"legacy.py", "main.py"}, (
-        "The `remove legacy module` commit must change exactly `legacy.py` and "
-        f"`main.py`, but it changes: {sorted(changed_paths(REV_CLEANUP))}"
+    assert changed_paths(cleanup) == {"legacy.py", "main.py"}, (
+        f"The bootstrap's `remove legacy module` commit ({cleanup}) must change "
+        "exactly `legacy.py` and `main.py`, but it changes: "
+        f"{sorted(changed_paths(cleanup))}"
     )
 
 
 def test_later_commit_intact():
     """`add logging` still records only its own change to main.py."""
-    assert changed_paths(REV_LOGGING) == {"main.py"}, (
-        "The `add logging` commit must change only `main.py`, but it changes: "
-        f"{sorted(changed_paths(REV_LOGGING))}"
+    logging_rev = graded(LOGGING)
+    assert changed_paths(logging_rev) == {"main.py"}, (
+        f"The bootstrap's `add logging` commit ({logging_rev}) must change only "
+        f"`main.py`, but it changes: {sorted(changed_paths(logging_rev))}"
     )
-    assert file_at(REV_LOGGING, "main.py") == MAIN_AFTER_LOGGING, (
-        "The `add logging` commit's change to `main.py` was altered."
+    assert file_at(logging_rev, "main.py") == MAIN_AFTER_LOGGING, (
+        f"The bootstrap's `add logging` commit ({logging_rev}) had its change to "
+        "`main.py` altered."
     )
-    assert file_at(REV_LOGGING, "settings.toml") == SETTINGS_TOML, (
+    assert file_at(logging_rev, "settings.toml") == SETTINGS_TOML, (
         "`settings.toml` must be present with the original content in the "
-        "`add logging` commit."
+        f"bootstrap's `add logging` commit ({logging_rev})."
     )
-    assert "legacy.py" not in tree_paths(REV_LOGGING), (
-        "`legacy.py` must stay deleted in the `add logging` commit."
+    assert "legacy.py" not in tree_paths(logging_rev), (
+        f"`legacy.py` must stay deleted in the bootstrap's `add logging` commit "
+        f"({logging_rev})."
     )
 
 
 def test_working_copy_intact():
     """The working copy still adds notes.txt and nothing else."""
-    assert changed_paths("@") == {"notes.txt"}, (
+    handover = assert_is_the_handover_working_copy()
+    assert changed_paths(handover) == {"notes.txt"}, (
         "The working copy's only change relative to its parent must be the "
-        f"addition of `notes.txt`, but it changes: {sorted(changed_paths('@'))}"
+        f"addition of `notes.txt`, but it changes: {sorted(changed_paths(handover))}"
     )
-    assert file_at("@", "notes.txt") == NOTES_TXT, "`notes.txt` was modified."
-    assert file_at("@", "settings.toml") == SETTINGS_TOML, (
+    assert file_at(handover, "notes.txt") == NOTES_TXT, "`notes.txt` was modified."
+    assert file_at(handover, "settings.toml") == SETTINGS_TOML, (
         "`settings.toml` must be present with the original content in the "
         "working copy."
     )
-    assert file_at("@", "main.py") == MAIN_AFTER_LOGGING, "`main.py` was modified."
-    assert "legacy.py" not in tree_paths("@"), (
+    assert file_at(handover, "main.py") == MAIN_AFTER_LOGGING, "`main.py` was modified."
+    assert "legacy.py" not in tree_paths(handover), (
         "`legacy.py` must stay deleted in the working copy."
     )
 
 
 def test_settings_on_disk():
-    """The checked-out tree really has the file back, not just the commits."""
+    """The checked-out tree really has the file back, not just the commits.
+
+    The content check here is unavoidably a read off disk -- that is the whole
+    point of the test. What the anchor adds is the identity of the tree being
+    read: `@` has to still be the working-copy commit the bootstrap handed over,
+    so "the file is back on disk" cannot be satisfied by checking out a
+    fabricated commit that happens to contain it.
+    """
+    assert_is_the_handover_working_copy()
     settings_path = os.path.join(PROJECT_DIR, "settings.toml")
     assert os.path.isfile(settings_path), (
         f"{settings_path} does not exist on disk."

@@ -29,6 +29,22 @@ So this script records, per task, for the *untouched bootstrap image*:
     reproduce one. (Deliberately NOT the *earliest* op: that is jj's root
     operation and carries no per-repo identity, exactly like the all-zeros
     root commit.)
+  * `working_copies`: the handover `@` of EVERY workspace of the repository,
+    keyed by workspace NAME. This is a reserved key and it exists because the
+    commit keys are description first lines, and `""` is not a unique key --
+    workspace_forget's bootstrap holds two commits described `""`, resolve_tool's
+    holds three, restore_file_from_parent's and workspace_update_stale's hold
+    two each. A workspace name is unique by construction, so
+    `anchored_working_copy(workspace="experiment")` can name a commit that
+    `anchored_change_id("")` cannot, and an exemption entry can too.
+
+It also *reads* one hand-written file per task, `tests/anchor_exemptions.json`
+(optional), and cross-checks it against the measurement: every entry must name
+exactly one bootstrap commit or one workspace, and must carry a reason. That
+file is what lets a task whose asked-for work removes a bootstrap commit
+(`abandon_commits`, `squash_range`, ...) still score. See tests/anchor.py for
+the schema and for why the alternative -- relaxing the invariant to "resolved at
+the handover operation" -- is unsound.
 
 The measurement runs in a throwaway container of the built image and the result
 is written on the HOST, into tasks/<task>/tests/bootstrap_anchor.json. That
@@ -111,6 +127,11 @@ do, runs the real `tests/test.sh`, and asserts three things at once:
   * a `ctrf.json` was written and `test.sh` exited 0 -- so the run is a scorable
     verdict and not the ERRORED-INFRA path.
 
+Because the anchor HOLDS on the untouched image is asserted rather than merely
+"did not fail", `--verify-untouched` is also what catches a stale
+`tests/anchor_exemptions.json`: an exemption entry that no longer resolves makes
+tests/anchor.py abstain, and an abstain is reported as a problem.
+
 For the three tasks whose bootstrap ships an empty directory it asserts the
 opposite anchor verdict -- an explicit `anchored=false` abstain -- so "this task
 has no repository" stays distinguishable from "the anchor was never generated".
@@ -151,9 +172,17 @@ ANCHOR_KEYS = (
     "task", "anchored", "jj_version", "environment_sha256", "image_id",
     "repos", "generated_by",
 )
-REPO_KEYS = ("path", "handover_operation_id", "operations", "commits")
+REPO_KEYS = ("path", "handover_operation_id", "operations", "working_copies",
+             "commits")
 COMMIT_KEYS = ("change_id", "commit_id", "description", "bookmarks")
+WORKING_COPY_KEYS = ("workspace", "path", "change_id", "commit_id")
 GENERATED_BY = "scripts/bootstrap_anchor.py"
+
+# Hand-written, committed, and read by tests/anchor.py at verification time.
+# Unlike the anchor it describes the TASK rather than one image build, so it is
+# not gitignored. This script only cross-checks it.
+EXEMPTIONS_NAME = "anchor_exemptions.json"
+EXEMPTION_LISTS = ("may_disappear", "may_be_divergent")
 
 # The three verdicts tests/anchor.py can reach, as they appear in the verifier's
 # own output. --verify-untouched reads them out of tests/test.sh's stdout rather
@@ -172,10 +201,11 @@ GENERATED_BY = "scripts/bootstrap_anchor.py"
 # "your anchor does not match this image".
 ANCHOR_HOLDS = "bootstrap anchor holds"
 ANCHOR_ABSTAINED = "bootstrap anchor not evaluated"
-# From the AssertionError the fixture raises. Deliberately includes the trailing
-# word: anchor.py's source splits the sentence across two string literals, so
-# only the RENDERED message contains the whole phrase on one line.
-ANCHOR_FAILED = "IS NOT THE ONE THE BOOTSTRAP HANDED OVER"
+# The token tests/anchor.py puts at the front of the AssertionError, which is
+# also what a human greps out of ctrf.json to tell an anchor failure from a task
+# failure. anchor.py's raise site references a function rather than this literal,
+# so a traceback through that module cannot forge it.
+ANCHOR_FAILED = "BOOTSTRAP_ANCHOR_VIOLATION"
 
 # Ids are stored FULL -- 32 chars for a change id, 40 for a commit id, 128 for
 # an operation id -- and compared full-to-full, because both sides of every
@@ -271,7 +301,51 @@ def store_key(root):
     return os.path.realpath(repo)
 
 
-def capture(root):
+def working_copies(root, roots):
+    """The handover @ of every workspace of this repository, by workspace NAME.
+
+    From ONE `jj workspace list` in any workspace of the repo, which is the
+    authoritative source for the names: a workspace name is unique within a
+    repository, which is exactly the property the description keys lack (`""`
+    identifies two commits in workspace_forget's bootstrap and three in
+    resolve_tool's).
+
+    `jj workspace list` does not print the workspace ROOT PATH, so the path is
+    filled in by matching against the roots discovered on disk -- and is left
+    null rather than guessed when two workspaces sit on the same commit, because
+    the path is diagnostic and the NAME is the key.
+
+    Template note for jj 0.38: in a workspace template `name` is a bare keyword
+    while `target` needs its methods called -- `target.change_id()`, not
+    `target.change_id`. Both spellings of the other form are parse errors.
+    """
+    template = 'name ++ "\x1f" ++ target.change_id() ++ "\x1f" ++ target.commit_id() ++ "\n"'
+    by_change = {}
+    for other in roots:
+        try:
+            change_id = jj(other, "log", "-r", "@", "--no-graph",
+                           "-T", 'change_id').strip()
+        except RuntimeError:
+            continue
+        by_change.setdefault(change_id, []).append(other)
+    found = []
+    for line in jj(root, "workspace", "list", "-T", template).splitlines():
+        if not line:
+            continue
+        parts = line.split(SEP)
+        if len(parts) != 3:
+            raise RuntimeError("unparseable workspace line %r in %s" % (line, root))
+        candidates = by_change.get(parts[1]) or []
+        found.append({
+            "workspace": parts[0],
+            "path": candidates[0] if len(candidates) == 1 else None,
+            "change_id": parts[1],
+            "commit_id": parts[2],
+        })
+    return sorted(found, key=lambda w: w["workspace"])
+
+
+def capture(root, roots):
     # all() ~ root() -- the root commit is the all-zeros virtual commit present
     # in EVERY jj repo (change id z*32), so it is identity-free and anchoring on
     # it would be the same mistake as anchoring on the earliest operation.
@@ -313,6 +387,7 @@ def capture(root):
         "path": root,
         "handover_operation_id": handover,
         "operations": operations,
+        "working_copies": working_copies(root, roots),
         # Sorted by change id so the file is diff-stable: jj log's order is
         # topological and would churn on unrelated Dockerfile edits.
         "commits": sorted(commits, key=lambda c: c["change_id"]),
@@ -338,7 +413,7 @@ def main():
         if key in seen:
             continue
         seen[key] = root
-        repos.append(capture(root))
+        repos.append(capture(root, roots))
     json.dump({"jj_version": version, "repos": repos}, sys.stdout)
 
 
@@ -411,6 +486,24 @@ def validate(task: str, raw: dict) -> None:
                     "id over the k-z alphabet; the capture template or the "
                     "parsing is wrong"
                 )
+        # The reserved working-copy key. Without it an undescribed working-copy
+        # commit is unaddressable whenever a bootstrap leaves more than one, so
+        # a measurement that produced none is a broken measurement rather than a
+        # repository with no workspaces.
+        copies = repo.get("working_copies") or []
+        if not copies:
+            raise MeasureError(
+                f"{task}: {repo['path']} reported no workspaces, so no handover "
+                "working copy could be recorded; `jj workspace list` returned "
+                "nothing usable"
+            )
+        names = [wc["workspace"] for wc in copies]
+        if len(set(names)) != len(names):
+            raise MeasureError(
+                f"{task}: {repo['path']} reports the workspace name(s) "
+                f"{sorted(n for n in names if names.count(n) > 1)} twice, so a "
+                "workspace name is not a unique anchor key here"
+            )
 
 
 def build_image(task: str) -> tuple[str, Path]:
@@ -508,6 +601,10 @@ def build_record(task: str, raw: dict, image_id: str, env_digest: str) -> dict:
             "path": repo["path"],
             "handover_operation_id": repo["handover_operation_id"],
             "operations": repo["operations"],
+            "working_copies": [
+                {key: wc.get(key) for key in WORKING_COPY_KEYS}
+                for wc in repo.get("working_copies") or []
+            ],
             "commits": [
                 {key: commit[key] for key in COMMIT_KEYS}
                 for commit in repo["commits"]
@@ -532,7 +629,12 @@ def serialize(record: dict) -> str:
     ordered = {key: record[key] for key in ANCHOR_KEYS}
     ordered["repos"] = [
         {
-            **{key: repo[key] for key in REPO_KEYS if key != "commits"},
+            **{key: repo[key] for key in REPO_KEYS
+               if key not in ("commits", "working_copies")},
+            "working_copies": [
+                {key: wc.get(key) for key in WORKING_COPY_KEYS}
+                for wc in repo.get("working_copies") or []
+            ],
             "commits": [
                 {key: commit[key] for key in COMMIT_KEYS} for commit in repo["commits"]
             ],
@@ -645,14 +747,106 @@ def compare(task: str, fresh: dict) -> list[str]:
     return problems
 
 
+def exemptions_path(task: str) -> Path:
+    return TASKS_DIR / task / "tests" / EXEMPTIONS_NAME
+
+
+def check_exemptions(task: str, fresh: dict) -> list[str]:
+    """Cross-check tests/anchor_exemptions.json against the measured bootstrap.
+
+    tests/anchor.py resolves each entry to a change id at verification time and
+    ABSTAINS if an entry does not resolve -- which is the fail-safe answer, but a
+    silent one: a stale exemption file would turn the integrity check off for
+    that task without failing anything. This is where that becomes loud, on the
+    host, next to the measurement that can settle it.
+
+    Checked here rather than in scripts/lint_tasks.py because only a measurement
+    knows what the bootstrap actually contains. lint_tasks.py still enforces the
+    parts that need no image: the schema, and that every entry has a reason.
+    """
+    path = exemptions_path(task)
+    rel = path.relative_to(REPO_ROOT)
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        return [f"{rel} does not parse ({exc})"]
+    if not isinstance(data, dict):
+        return [f"{rel} is not a JSON object"]
+
+    problems: list[str] = []
+    if data.get("task") != task:
+        problems.append(f"{rel} records task {data.get('task')!r}, not {task!r}")
+    if not fresh["anchored"]:
+        problems.append(
+            f"{rel} exists, but this task's bootstrap ships no jj repository "
+            "(anchored=false), so tests/anchor.py abstains and the file can "
+            "never apply. Delete it."
+        )
+        return problems
+
+    described: dict[str, int] = {}
+    workspaces: dict[str, int] = {}
+    for repo in fresh["repos"]:
+        for commit in repo["commits"]:
+            described[commit["description"]] = described.get(
+                commit["description"], 0) + 1
+        for wc in repo.get("working_copies") or []:
+            workspaces[wc["workspace"]] = workspaces.get(wc["workspace"], 0) + 1
+
+    for key in EXEMPTION_LISTS:
+        entries = data.get(key, [])
+        if not isinstance(entries, list):
+            problems.append(f"{rel}: {key!r} is not a list")
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                problems.append(f"{rel}: {key} contains {entry!r}, not an object")
+                continue
+            reason = entry.get("reason")
+            if not isinstance(reason, str) or not reason.strip():
+                problems.append(
+                    f"{rel}: an entry in {key} has no non-empty 'reason'; every "
+                    "exemption has to say why the task's asked-for work removes "
+                    "that commit"
+                )
+            named = [k for k in ("description", "working_copy") if k in entry]
+            if len(named) != 1:
+                problems.append(
+                    f"{rel}: an entry in {key} must have exactly one of "
+                    f"'description' or 'working_copy', not {named or 'neither'}"
+                )
+                continue
+            if "description" in entry:
+                count = described.get(entry["description"], 0)
+                if count != 1:
+                    problems.append(
+                        f"{rel}: {key} names the description "
+                        f"{entry['description']!r}, which matches {count} "
+                        "bootstrap commit(s) in this image. An exemption must "
+                        "name exactly one commit -- use "
+                        '{"working_copy": "<workspace>"} for an undescribed '
+                        "working-copy commit."
+                    )
+            else:
+                count = workspaces.get(entry["working_copy"], 0)
+                if count != 1:
+                    problems.append(
+                        f"{rel}: {key} names workspace "
+                        f"{entry['working_copy']!r}, which matches {count} "
+                        f"workspace(s) in this image (known: "
+                        f"{', '.join(sorted(workspaces)) or 'none'})"
+                    )
+    return problems
+
+
 def audit(task: str, fresh: dict) -> list[str]:
     """Problems with the measurement itself, committed file or not."""
-    if not fresh["anchored"]:
-        # Not a failure. The three empty-directory tasks are supposed to land
-        # here; anything else landing here is a Dockerfile that stopped
-        # creating a repo, which the --check path reports as an anchored flip.
-        return []
-    return []
+    # anchored=false is not a failure. The empty-directory tasks are supposed to
+    # land there; anything else landing there is a Dockerfile that stopped
+    # creating a repo, which the --check path reports as an anchored flip.
+    return check_exemptions(task, fresh)
 
 
 def verify_untouched(task: str, keep_image: bool, quiet: bool) -> list[str]:
@@ -808,7 +1002,11 @@ def anchor_verdict(output: str) -> tuple[bool, str, bool]:
     abstain = ""
     for raw in output.splitlines():
         line = raw.strip()
-        if line == ANCHOR_HOLDS:
+        # startswith, not ==: the note now carries the exemption summary when a
+        # task has one ("bootstrap anchor holds (2 commit(s) may be absent ...)").
+        # Still line-anchored, so pytest echoing anchor.py's source in a
+        # traceback cannot match -- those lines start with `return`.
+        if line.startswith(ANCHOR_HOLDS):
             holds = True
         elif line.startswith(ANCHOR_ABSTAINED) and not abstain:
             abstain = line
@@ -958,6 +1156,28 @@ def main() -> int:
               f"{len(measurements) - len(unanchorable)} anchorable; "
               f"{len(unanchorable)} with no bootstrap repository:")
         print("  " + (", ".join(unanchorable) or "-"))
+
+        # The exemption inventory. Printed on every run so a commit whose
+        # removal is allowed can never become invisible infrastructure -- the
+        # same reason scripts/lint_tasks.py prints every floored test.
+        print("\nper-task anchor exemptions (tests/anchor_exemptions.json):")
+        exempted = 0
+        for task in sorted(measurements):
+            path = exemptions_path(task)
+            if not path.is_file():
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except ValueError:
+                print(f"  {task:<32} UNPARSEABLE")
+                continue
+            counts = " ".join(
+                f"{key}={len(data.get(key) or [])}" for key in EXEMPTION_LISTS
+            )
+            print(f"  {task:<32} {counts}")
+            exempted += 1
+        print(f"  {exempted} task(s) claim an exemption; the other "
+              f"{len(measurements) - exempted} are checked strictly.")
 
     if problems:
         print(f"\nFAIL: {sum(len(v) for v in problems.values())} problem(s) across "

@@ -11,7 +11,9 @@ run has burned an hour of GPU-free-but-not-free CI time:
   * a bootstrap/task.json whose task_description has drifted from instruction.md
   * a Dockerfile pinning a different jj version from every other task
   * a Dockerfile that does not bake in the pinned verifier dependencies
-  * a tests/test.sh that has drifted out of sync with its 52 identical siblings
+  * a tests/test.sh, tests/anchor.py or tests/conftest.py that has drifted out
+    of sync with its 52 identical siblings
+  * a tests/conftest.py that no longer applies the bootstrap integrity anchor
   * a tests/vacuity_floor.json that is missing, malformed, or stale with
     respect to the tests defined in tests/test_final_state.py
 
@@ -38,6 +40,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TASKS_DIR = REPO_ROOT / "tasks"
 
 # Every task directory must contain exactly these, at these paths.
+#
+# tests/bootstrap_anchor.json is deliberately NOT here and is gitignored. jj
+# generates change ids randomly at commit creation, so the anchor describes an
+# image BUILD rather than a Dockerfile: two builds of the same Dockerfile
+# produce disjoint change id sets. It is generated on the host immediately
+# before a sweep (scripts/bootstrap_anchor.py --write) and tests/anchor.py
+# abstains when it is absent, so requiring it here -- or in CI, which always
+# builds cold -- would fail permanently.
 REQUIRED_FILES = (
     "instruction.md",
     "task.toml",
@@ -46,8 +56,16 @@ REQUIRED_FILES = (
     "environment/Dockerfile",
     "tests/test.sh",
     "tests/test_final_state.py",
+    "tests/anchor.py",
+    "tests/conftest.py",
     "tests/vacuity_floor.json",
 )
+
+# Shared verifier infrastructure: copied verbatim into all 53 tasks, because
+# harbor mounts only one task's tests/ directory at /tests and there is nowhere
+# else for a shared module to live. Divergence between copies is always a bug --
+# it means one task is being verified by different code from the other 52.
+SHARED_TEST_FILES = ("tests/test.sh", "tests/anchor.py", "tests/conftest.py")
 
 # (table path, key) pairs that must be present in task.toml.
 REQUIRED_TOML_KEYS = (
@@ -256,22 +274,28 @@ def check_jj_versions_agree(pinned: dict[str, str], findings: Findings) -> str |
     return consensus
 
 
-def check_test_sh_identical(digests: dict[str, str], findings: Findings) -> None:
-    """tests/test.sh is boilerplate copied to every task; drift is a bug."""
+def check_shared_file_identical(
+    rel: str, digests: dict[str, str], findings: Findings
+) -> bool:
+    """A shared verifier file is copied to every task; drift is a bug.
+
+    Returns True when every copy agrees (or there are none to compare).
+    """
     if not digests:
-        return
+        return True
     counts = Counter(digests.values())
     if len(counts) == 1:
-        return
+        return True
     consensus, _ = counts.most_common(1)[0]
     for task, digest in sorted(digests.items()):
         if digest != consensus:
             findings.fail(
                 task,
-                "tests/test.sh differs from the shared copy used by "
+                f"{rel} differs from the shared copy used by "
                 f"{counts[consensus]} other task(s) (sha256 {digest[:12]} vs "
                 f"{consensus[:12]})",
             )
+    return False
 
 
 def check_vacuity_floor(task: str, task_dir: Path, findings: Findings) -> dict | None:
@@ -387,11 +411,42 @@ def check_test_sh_reads_floor(task: str, task_dir: Path, findings: Findings) -> 
         )
 
 
+def check_conftest_applies_anchor(task: str, task_dir: Path, findings: Findings) -> None:
+    """tests/conftest.py is what makes the anchor apply without 53 edits.
+
+    Same argument as check_test_sh_reads_floor: 53 byte-identical copies of a
+    conftest.py that no longer runs the check would leave the lint green while
+    every verifier silently stopped detecting a rebuilt repository. So assert the
+    two properties that make it work at all -- it calls the assertion, and it does
+    so from an AUTOUSE fixture. Autouse is load-bearing: written as a test
+    function the assertion would pass on the untouched image, land in
+    tests/vacuity_floor.json, and then be excluded from both sides of the
+    partial-credit fraction, so a detected cheat would still score
+    (scored-1)/scored instead of 0.
+    """
+    path = task_dir / "tests/conftest.py"
+    if not path.is_file():
+        return  # already reported by check_required_files
+    text = path.read_text(encoding="utf-8")
+    if "assert_bootstrap_anchor" not in text:
+        findings.fail(
+            task,
+            "tests/conftest.py does not call assert_bootstrap_anchor, so this "
+            "task's verifier cannot tell a solved repository from a rebuilt one",
+        )
+    if "autouse=True" not in text:
+        findings.fail(
+            task,
+            "tests/conftest.py has no autouse=True fixture, so the bootstrap "
+            "anchor is not applied unless a test opts in",
+        )
+
+
 def print_inventory(
     instruction_sections: dict[str, str],
     network_modes: dict[str, Counter],
     jj_version: str | None,
-    test_sh_uniform: bool,
+    shared_uniform: dict[str, bool],
     floors: dict[str, dict],
 ) -> None:
     """Non-fatal policy inventory. Drift here shows up as changed numbers."""
@@ -442,10 +497,10 @@ def print_inventory(
         print(f"    {task:<32} {record['floor']}/{record['tests']}  {names}")
 
     print("\npinned jj version: " + (f"v{jj_version}" if jj_version else "(unknown)"))
-    print(
-        "tests/test.sh:     "
-        + ("identical across all tasks" if test_sh_uniform else "DRIFTED")
-    )
+    print("shared verifier files:")
+    for rel in SHARED_TEST_FILES:
+        state = "identical across all tasks" if shared_uniform.get(rel, True) else "DRIFTED"
+        print(f"  {rel:<26} {state}")
 
 
 def main() -> int:
@@ -460,7 +515,7 @@ def main() -> int:
 
     findings = Findings()
     pinned_jj: dict[str, str] = {}
-    test_sh_digests: dict[str, str] = {}
+    shared_digests: dict[str, dict[str, str]] = {rel: {} for rel in SHARED_TEST_FILES}
     instruction_sections: dict[str, str] = {}
     network_modes: dict[str, Counter] = {p: Counter() for p in NETWORK_MODE_PHASES}
     floors: dict[str, dict] = {}
@@ -492,20 +547,25 @@ def main() -> int:
         if record is not None:
             floors[task] = record
         check_test_sh_reads_floor(task, task_dir, findings)
+        check_conftest_applies_anchor(task, task_dir, findings)
 
-        test_sh = task_dir / "tests/test.sh"
-        if test_sh.is_file():
-            test_sh_digests[task] = hashlib.sha256(test_sh.read_bytes()).hexdigest()
+        for rel in SHARED_TEST_FILES:
+            path = task_dir / rel
+            if path.is_file():
+                shared_digests[rel][task] = hashlib.sha256(path.read_bytes()).hexdigest()
 
     consensus_jj = check_jj_versions_agree(pinned_jj, findings)
-    check_test_sh_identical(test_sh_digests, findings)
+    shared_uniform = {
+        rel: check_shared_file_identical(rel, shared_digests[rel], findings)
+        for rel in SHARED_TEST_FILES
+    }
 
     print(f"Linted {len(task_dirs)} task(s) under {TASKS_DIR.relative_to(REPO_ROOT)}/")
     print_inventory(
         instruction_sections,
         network_modes,
         consensus_jj,
-        test_sh_uniform=len(set(test_sh_digests.values())) <= 1,
+        shared_uniform=shared_uniform,
         floors=floors,
     )
 

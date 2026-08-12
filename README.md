@@ -71,6 +71,87 @@ It reports any trial that produced no `verifier/ctrf.json` as `ERRORED-INFRA` �
 separate from a genuine `reward: 0` — and exits non-zero if there are any. See
 [ROADMAP.md](ROADMAP.md) for the canonical local invocation.
 
+### The bootstrap integrity anchor
+
+A verifier grades whatever repository it finds at the task's project path. On its own
+that cannot tell a *solved* repository from a *wiped and rebuilt* one, and rebuilds have
+been observed in real sweeps scoring full marks — including a pure-jj route
+(`jj new -r 'root()'` then `jj restore --from <rev>`) that no blocklist of commands can
+see. The anchor closes that.
+
+**What it is.** `scripts/bootstrap_anchor.py --write` builds each task image, reads the
+untouched bootstrap state out of a throwaway container, and writes
+`tasks/<task>/tests/bootstrap_anchor.json` on the *host*: the `change_id` of every
+bootstrap commit, plus the id of the last operation the bootstrap performed. Harbor
+mounts the whole `tests/` directory read-only at `/tests`, so the anchor arrives beside
+the verifier for free, exactly like `vacuity_floor.json` — nothing is added to the image,
+and no copy exists inside the container for an agent to rewrite. `tests/conftest.py`
+turns it into a session-scoped `autouse` fixture, so all 53 tasks get the check without
+53 edits, and when it fails every test in the file fails and the trial scores 0.
+
+**Why change ids and not commit ids.** A jj change id is generated *randomly* when a
+commit is created and is *preserved* by a genuine `rebase`, `squash`, `describe`,
+`abandon` or `restore`. So it is the one property that survives every legitimate solve
+and that a rebuild cannot reproduce. Commit ids are content-derived — tree, parents,
+description, author identity and timestamp — so they are forgeable in principle *and*
+they change on every honest rewrite. Asserting them would both miss cheats and fail
+correct solves. They are recorded for diagnosis only. Descriptions are attacker-writable
+free text and are never the thing asserted.
+
+**The anchor describes an image BUILD, not a Dockerfile.** Because change ids are random,
+two builds of the same Dockerfile produce disjoint change id sets, and
+`JJ_RANDOMNESS_SEED` is not an escape hatch — it is per-process, so it collapses every
+commit in a bootstrap onto one change id. The anchor is therefore a **per-sweep build
+artifact and is gitignored**; it is not in `scripts/lint_tasks.py`'s required files and CI
+does not need it, because CI always builds cold. Run this immediately before a sweep,
+against the same docker daemon the sweep will use:
+
+```bash
+python3 scripts/bootstrap_anchor.py --write             # measure the images
+python3 scripts/bootstrap_anchor.py --check             # must be clean
+python3 scripts/bootstrap_anchor.py --verify-untouched  # pre-flight, see below
+harbor run ...                                          # then the sweep
+```
+
+Between `--write` and the sweep, **do not prune, do not `--no-cache`, and do not build
+on a different daemon.** Anything that evicts a bootstrap layer re-randomises that task's
+change ids. `--check` catches that by re-measuring and comparing; it reports a moved id
+set with an unchanged `environment_sha256` (a content hash of the build context) as a
+cold-cache rebuild, and a changed one as a real Dockerfile change to review. Docker image
+ids are deliberately *not* the staleness key — buildx mints a new one on every build even
+on a full cache hit.
+
+`--verify-untouched` is the pre-flight, and it is the one that catches the dangerous
+case: an anchor written before an image that was then rebuilt cold would make **every**
+trial score 0, which reads as a model collapse rather than an infrastructure fault. For
+each task it runs the real `tests/test.sh` against the untouched image with the real
+`tests/` directory mounted at `/tests`, and asserts the anchor reports that it *holds*,
+the reward is `0`, and a `ctrf.json` was written — the CI vacuity check plus the anchor,
+end to end.
+
+**A missing anchor abstains, it does not fail.** `tests/anchor.py` prints why and passes
+when the file is absent, unparseable, or records `anchored: false` — the last being the
+three tasks whose bootstrap ships an empty directory, where creating the repository *is*
+the task (`git_remote_add`, `template_formatting`, `working_copy_as_commit`). An anchor
+that is not there is an infrastructure condition, and a rollout in which one missing file
+zeroes every trial is worse than the vulnerability it closes. `--check` and
+`--verify-untouched` are what make that loud, on the host, where it can be fixed.
+
+**One hard rule if you edit `tests/conftest.py`.** It must stay import-trivial. An
+exception raised while pytest is *importing* conftest makes pytest exit 4 having reported
+zero tests, `test.sh` then writes `verifier_error.txt`, and
+`scripts/check_run_results.py` classifies the trial `ERRORED-INFRA` — recording a cheat
+as broken infrastructure. Every failure path must go through the fixture body, where
+`pytest-json-ctrf` still emits one entry per test with status `failed` and the trial
+scores an honest 0.
+
+**What the anchor does not close.** It proves the bootstrap commits still exist; it does
+not prove they are the commits the verifier graded. An agent can fabricate a parallel
+stack from `root()`, move the bookmarks onto it and destroy nothing — every anchored
+change id is still visible, so the fixture holds. Closing that needs each task's scored
+assertions to address the graded commit by its anchored change id, for which
+`tests/anchor.py` exposes `anchored_change_id(description)`.
+
 ### Evaluation Details
 
 Before starting the evaluation, you should set the necessary environment variables.

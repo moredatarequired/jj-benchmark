@@ -5,6 +5,11 @@ Of those 22, only 14 belong in the shipping suite; the other 8 are structurally 
 produced no separation across three model tiers. Build 10 new tasks against capabilities
 nothing currently touches. **Target: 24 tasks — 14 kept, 10 new.**
 
+*This target survived reconciliation against the binary-verified capability survey (§0), with
+three amendments to how it is reached rather than to the number: author ~16 new tasks and ship the
+10 that measurably discriminate; require at least six of the ten to compose five or more dependent
+operations; and treat six of the 14 kept as provisional. §5.1 has the argument.*
+
 The case for cutting that hard is not that the tasks are badly written, though many are. It
 is that the suite has almost stopped measuring anything:
 
@@ -27,6 +32,41 @@ grader artifact of its own. That is the instrument.
 *Verification note.* Every `file:line` below I opened myself at `3060c420`. Tests/floor/scored
 and the anchoring column were recomputed mechanically across all 58 task directories and match
 the audit's table row for row. Anything marked *inferred* I did not run.
+
+---
+
+## 0. Companion document: the capability survey
+
+This proposal has a companion that it was **not** written against, and which has since been
+reconciled into it: **`docs/task_redesign_survey.md`**, commit **`0a8aab1b`** on branch
+**`claude/hearth-thread-zk1kgr`** (not on this branch — read it with
+`git show 0a8aab1b:docs/task_redesign_survey.md`). Where the two documents once disagreed, this
+one has been corrected; every such correction is marked in place as *corrected against the
+binary-verified survey*.
+
+**What it contains.** A 1,888-line research survey of what jj is for, written against the real
+pinned `jj 0.38.0` binary rather than against documentation. Four parts matter to this proposal:
+
+1. **A sixteen-area capability map** (its §2), each area labelled with the mental-model failure a
+   git-fluent agent makes and whether the result is observable in end state.
+2. **A "silent-success catalogue"** (its §3) — the cases where jj exits 0 having done nothing.
+   This is the single most useful thing in it for task design; see §4.0 below.
+3. **39 candidate task themes across five tiers** (its §5), each with a fixture, a one-line
+   user-register prompt, an end state, and how it is graded from end state alone. **These 39 are
+   the menu the "build 10 new" recommendation in §5 should be drawn from.** The N1–N10 sketches in
+   §4 of this document predate the survey; they are retained as a statement of what the ten must
+   *cover*, not as the shortlist, and where a survey theme covers the same ground with a verified
+   fixture recipe, the survey's version wins.
+4. **A corrections appendix** (its §9): 22 claims from jj's own documentation and from two
+   tutorials **refuted** against the binary, plus 26 drifted. Several of them would poison a
+   fixture or a verifier; the load-bearing ones are reproduced in §4.0 below.
+
+**How to read its confidence.** Every behavioural claim in it is labelled `[verified]` (run on the
+pinned binary, output quoted), `[docs-0.38]` (read from correctly-versioned docs, not executed) or
+`[unverified]`. Only `[verified]` is safe to build a grader on. The survey states that a
+fact-check pass over its own text was still running when it was written, so it is not
+self-certified; §3 of this document's adjudication records the two places where its own tree-level
+claims do not survive contact with our task files.
 
 ---
 
@@ -66,6 +106,16 @@ commits rather than one at a time" — that sentence is the task.
 | `git_integration` | `git show-ref --verify refs/heads/my-feature` inside `remote.git` (`tests/test_final_state.py:29-35`) — `git branch my-feature` satisfies it |
 | `git_remote_add` | `"origin" not in stdout` of `jj git remote list` (`tests/test_final_state.py:27`) |
 | `diffedit_interactive` | Greps `jj show` stdout for `def foo():` / `def bar():` (`tests/test_final_state.py:51-54`) |
+| `workspace_update_stale` | `"stale" not in result.stderr.lower()` after `jj st` (`tests/test_final_state.py:86-90`) — jj's English, on a scored test |
+
+*Corrected against the binary-verified survey.* The `workspace_update_stale` row is new. An
+earlier draft of this document listed that task as sound on all four axes and put it in the
+shipping 14; it is not. `vacuity_floor.json` reads 3 tests / 0 floor, so **all three of its tests
+are scored**, and `test_no_stale_error` is an English assertion on jj's stderr. It also grades a
+description substring (`test_commit_message`, `"Activate config" in result.stdout`, `:117`). The three
+`assert_descends_from_the_handover` calls are properly anchored and are the reason the task is
+worth repairing rather than cutting, but the English and description assertions have to go the way
+`undo_mistaken_rebase`'s did. See §5 for what this does to its place in the target set.
 
 Position is the same failure in a different costume, and the suite has already paid for it three
 times, each with the measurement recorded in the verifier's own docstring:
@@ -80,6 +130,12 @@ times, each with the measurement recorded in the verifier's own docstring:
   `jj edit @-` + `jj split -i`, the route the task is named for, had been scoring 0.5.
 
 Ten tasks still carry an incidental `@` pin that has not had that treatment.
+
+*Counting note, not a correction.* The survey reports "12 verifiers on `main` still resolve a
+graded commit through `@-`". That is not this number and neither is wrong: the survey counts
+verifier files containing the token `@-`; this document counts **tasks whose scored tests** turn
+on `@`-position after the three de-positionalisations above. A file can contain `@-` only inside a
+fallback constant or a floored test. Do not reconcile them into one figure.
 
 ### R3 — Grade WHAT, not HOW
 
@@ -236,7 +292,7 @@ second filter.
 | `revert_file` | Three files, two source revisions, one left alone, plus a description — the strongest plain-restore fixture |
 | `bookmark_create_and_move` | Ancestor-of rather than equals (`:71`), so both the `jj new` + `bookmark move` and `jj commit` routes pass |
 | `workspace_add` | `assert_backed_by_the_project_repo` (`:82`) closes the `jj git init` cheat |
-| `workspace_update_stale` | Genuinely distinct (stale working copy); needs the `@-` positional relaxed |
+| `workspace_update_stale` | Genuinely distinct (stale working copy); needs the `@-` positional relaxed — **and, corrected against the survey, needs `test_no_stale_error`'s English assertion and `test_commit_message`'s description grep removed too** (§1, R2). All three of its tests are scored |
 | `git_fetch_remote` | Fetch + rebase onto a remote-only bookmark + push, graded by commit id, with an anti-cheat guard |
 | `git_export` | `git rev-parse` compared to the resolved commit id |
 | `obslog_view` | Recomputes the evolution with `jj evolog` at verification time; the answer cannot be hardcoded |
@@ -312,14 +368,129 @@ Four cases, and in each the verifier is what to keep:
 
 ## 4. What's missing
 
-Capabilities with no task at all. I confirmed the absences by grepping all 53 prompts and all 53
-verifiers: `parallelize`, `simplify-parents`, `sparse`, `annotate`, `op diff`, `op show`,
-`op abandon`, `file chmod`, `--restore-descendants`, `bookmark track`, `divergent()`, `jj fix` and
-`glob:` appear nowhere. `conflicts()` appears only as substrings of test *function names*
-(`test_no_unresolved_conflicts` and friends); `immutable_heads()` appears once, in a docstring
-comment in `operation_recovery`.
+### 4.0 What "missing" means here — corrected against the binary-verified survey
 
-The six to lead with. Fixture / the request in a user's voice / what the verifier asserts.
+Two framings of this section, and the second is the one that matters.
+
+**The capability-token framing (this document's original, and still true).** Capabilities with no
+task at all. I confirmed the absences by grepping all 53 prompts and all 53 verifiers:
+`parallelize`, `simplify-parents`, `sparse`, `annotate`, `op diff`, `op show`, `op abandon`,
+`file chmod`, `--restore-descendants`, `bookmark track`, `divergent()`, `jj fix`, `metaedit`,
+`merges()`, `parents.len` and `glob:` appear nowhere. `conflicts()` appears only as substrings of
+test *function names* (`test_no_unresolved_conflicts` and friends); `immutable_heads()` appears
+once, in a docstring comment in `operation_recovery`. (Re-verified at `dd85164d` while
+reconciling; every one of those greps still returns zero.)
+
+**The coverage framing, which corrects a common assumption — including one this proposal's cut
+list could be read as endorsing.** The survey (its §4.1) measured area coverage across all 53 and
+found the received wisdom wrong: **workspaces (4 tasks), templates (3), absorb (1), git interop
+(5) and conflicts (4) are all already covered.** I re-counted these against `tasks/` and they are
+exact. Nothing in this document should be read as claiming any of those five areas has no
+coverage — §3 cuts *into* four of them, which is only defensible because the survivors keep the
+area. The hole in each is **variety and depth, not presence**: all four conflict tasks are the
+same shape (one file, two sides, textual, resolved on the spot), the one revset task is
+substring-graded, and the whole suite tops out at three dependent operations.
+
+**So the real holes, restated in the survey's terms and in priority order:**
+
+| # | hole | current state |
+|---|---|---|
+| A | **Merge commits** | Zero tasks. No `jj new A B`, no assertion anywhere on `parents.len() > 1`; `jj merge` does not exist on 0.38 |
+| B | **Revset depth** | One task (`revset_querying_bob`), 43 lines, substring-graded, and the weakest verifier in the set |
+| C | **Immutability** | Zero. `immutable_heads()`, `immutable()`, the refusal, `--ignore-immutable` all untouched |
+| D | **Author/committer surgery** | Zero. No `jj metaedit --update-author`/`--author`, despite this being the exact fact that broke `revset_querying_bob` and let `log_template_author` pass by accident |
+| E | **Conflict variety** | Four tasks, one shape. Absent: a conflict deliberately *left* conflicted and carried through descendants, a conflicted bookmark, a delete/modify or file-type conflict, `jj resolve --list` |
+| F | **Composition** | The longest chain in the suite is `git_fetch_remote` at **three** steps. Nothing composes five or more dependent operations, and nothing requires an intermediate decision that changes the rest of the plan |
+| G | **Scale** | Every bootstrap is ≤ 6 commits and ≤ 3 files — never big enough that eyeballing fails and a revset or template becomes the only viable route |
+| H | **Diagnosis** | Five tasks make the agent write a script; none make it diagnose and report a conclusion |
+
+**F is the one that changes what the ten new tasks should be.** The survey's power finding is
+blunt: opus's maximum attainable Δ on this suite is 0.38pp against a 6.02pp noise floor — 16×
+below its own noise — and a *perfect* skill moves sonnet's 53-task mean by 4.15pp. The ceiling is
+a property of the task set, and a suite of one-to-three-command tasks cannot discriminate a
+frontier model no matter how many of them there are. The N1–N10 sketches below were written as
+one-capability-per-task and are mostly two-to-three steps; **capability coverage alone does not
+lift the ceiling.** §5 amends the target set accordingly.
+
+### 4.0.1 The silent-success family — the richest vein, and it was missing from this section
+
+*Corrected against the binary-verified survey.* This document's original §4 organised the new
+tasks by capability. The better organising principle is the survey's §3: the cases where **jj
+exits 0 having done nothing**, or something other than what was asked. There is no error to read,
+no non-zero status to notice, and no prompt to reconsider — so a git-shaped agent finishes
+confidently and reports done, and a verifier that grades end state catches it perfectly. Every
+member below is `[verified]` against the pinned binary:
+
+- **Empty revsets are silent per *flag*, not per command.** `jj rebase -r <empty> -o X` →
+  `Nothing changed.` at **exit 0**, while `-s`/`-b` with the same empty revset error at 1.
+  `jj squash --from <empty>` → exit 0; `--into <empty>` → exit 1. `jj abandon <empty>` and
+  `jj describe -r <empty> -m X` → exit 0. Combine with the string-pattern trap — a bare string in
+  `description()` is a whole-string `glob:` and jj stores descriptions with a trailing newline, so
+  `description("Add feature A")` matches **nothing** — and the canonical false success is
+  `jj squash --from 'description("Add feature A")' --into 'description("Add base")'` printing
+  `Nothing changed.` at exit 0.
+- **`jj file track <ignored-path>` without `--include-ignored` exits 0 and tracks nothing.** No
+  error, no warning. This is already in the suite as `track_untracked_file`, which is why that
+  task is the one kept item with a measured non-zero failure rate on sonnet.
+- **Pushing an untracked new bookmark.** `jj bookmark create newb && jj git push` →
+  `Warning: Refusing to create new remote bookmark newb@origin` + `Nothing changed.` at **exit 0**.
+  A second, distinct exit-0 path exists when nothing is in the default push revset.
+- **`jj next -n 2` flips edit semantics.** On 0.38 `-n` is `--no-edit` (a boolean) and the count is
+  a positional; `--amount` does not exist. So `-n 2` parses as `--no-edit` **plus** `OFFSET=2` —
+  the agent gets the right offset by accident while silently flipping whether `@` lands on a new
+  child or edits the target in place. That changes the graded end state.
+
+**Make this a selection criterion for the ten.** A task whose wrong solve *errors* is testing
+discoverability; a task whose wrong solve *succeeds* is testing the mental model, which is R1.
+Every one of the four above is rated excellent for gradeability because the wrong end state is
+trivially distinguishable from the target one.
+
+### 4.0.2 Verified facts that constrain these fixtures and verifiers
+
+From the survey's §9 corrections appendix — 22 documentation and tutorial claims refuted against
+the binary. These six would poison a fixture or a verifier in the set proposed below, and none of
+them was known when §4 was first drafted:
+
+1. **`??` marks a CONFLICTED BOOKMARK, not divergence.** Divergence renders as `X/0` / `X/1` plus a
+   `(divergent)` marker. Both tutorials get this wrong and they can appear on the same log line.
+   A divergence verifier that greps `??` grades the wrong thing.
+2. **A bare change-id revset ERRORS on a divergent change**, and a bare bookmark-name revset
+   ERRORS on a conflicted bookmark — `Error: Change ID 'x' is divergent` / `Error: Name 'main' is
+   conflicted`, both exit 1. `present(X)` does not help. Verifiers must spell `change_id(X)` and
+   `bookmarks(name)`. A verifier for N8 or for a conflicted-bookmark task **can be broken by the
+   exact trap it tests**. `tasks/concurrent_operations/tests/test_final_state.py:26-31` already
+   gets this right and is the in-tree reference.
+3. **The `all:` revset prefix is a parse error on 0.38** (`Error: Failed to parse revset: Syntax
+   error`). The arity guard survives in genuinely single-revision positions, but the bulk-rebase
+   idiom is spelled without a prefix, and a multi-revision revset needs none in `-s`/`-r`/`-o`.
+   Do not put `all:` in a reference solution or an instruction.
+4. **`jj git init` is colocated by default on 0.38** — `--colocate` is an accepted no-op. All 53
+   bootstraps use plain `jj git init`, so **every existing task image is already colocated**, and
+   `git` is present in every image. That is a live unintended false-pass route in tasks that never
+   meant to be about git, and it is what makes the `git_import`/`git_export` merge in §3 coherent
+   rather than a stretch. A task that wants a *non*-colocated repo must pass `--no-colocate`.
+5. **`jj backout` does not exist** (`error: unrecognized subcommand`); only `jj revert`, and its
+   destination flag is **mandatory** — a bare `jj revert -r X` is a clap error at exit 2.
+6. **`--allow-new` is hidden but fully functional** on 0.38: absent from `-h` and `--help`, emits
+   one deprecation warning, and **succeeds**. A verifier must not fail a solve that uses it, and it
+   cannot be used as a version discriminator. The same hidden-but-functional shape holds for
+   `jj op undo`, `jj git fetch --tag` and `jj tag list --tracked/--remote`.
+7. **Repo config is NOT at `.jj/repo/config.toml`.** On 0.38 it lives at
+   `$HOME/.config/jj/repos/<20-hex>/config.toml`, keyed by `.jj/repo/config-id`, and a hand-placed
+   `.jj/repo/config.toml` is **ignored**. Any fixture that sets repo config must go through
+   `jj config set --repo`, and any verifier that wants to know what an agent configured must
+   *evaluate* the setting rather than read a file. N6 below already specifies evaluation; this is
+   the reason it must.
+
+One more, for the anchor rather than the fixture: `jj config set --repo <key> <value>` does not
+validate key names — nonsense keys are accepted silently at exit 0. "The agent set a config key"
+is never evidence the key does anything.
+
+### 4.1 The six to lead with
+
+Fixture / the request in a user's voice / what the verifier asserts. Each is cross-referenced to
+the survey theme that covers the same ground with a verified fixture recipe; where a survey theme
+exists, prefer it.
 
 **N1 — a conflict that propagates instead of being resolved on the spot.** All four current
 conflict tasks resolve immediately, so nothing tests jj's actual differentiator: a conflicted
@@ -391,17 +562,75 @@ The remaining four in the target set:
 - **N8 — divergence as a thing to work with.** Absorbs `concurrent_operations`. Hand over a repo
   with two visible commits sharing one change id; keep the one containing a named file and abandon
   the other, addressed by commit id since the change id is ambiguous.
+  *Corrected against the binary-verified survey — and against the tree.* This is **not** new
+  capability coverage, and neither this document's original framing nor the survey's "absent: a
+  divergent change" (its §4.2 F) is right about that. `concurrent_operations` already builds a
+  divergent change and resolves it: its `instruction.md:9-11` asks for exactly the survey's own
+  single-actor divergence route (`describe`, then `describe` again `--at-operation` an earlier op),
+  and its verifier already spells `change_id(<id>)`, already reads the `divergent` template keyword
+  (`:124-125`), and already documents that the abandoned side is a divergent *sibling* rather than
+  a predecessor (`:26-31`). What N8 actually is, therefore, is a **re-scope** of that task: keep
+  the structural half (`:141-150`), delete the English assertion (`:152-155`), and hand the
+  divergence over pre-made instead of asking the agent to manufacture it — which is what makes the
+  prompt writable in a user's voice. The survey's themes 2.7 and 4.3 are the same task at Tier 2
+  and Tier 4; 4.3's two-actor version is the one with genuinely new content, because it pairs
+  divergence with a conflicted bookmark on the same log lines. Note the solve removes a change id,
+  so N8 needs an `anchor_exemptions.json` — and a green pre-sweep pass **cannot** tell you it is
+  missing, because the untouched image never does the work that breaks the assertion.
 - **N9 — duplicate a range.** Absorbs `duplicate_commit`. `jj duplicate -r A::B -d X` /
   `--insert-after`, with each duplicate's own diff asserted and both anchored originals intact.
 - **N10 — a configured non-interactive diff editor.** Replaces `diffedit_interactive`. All three
   "interactive" tasks can be, and by their verifiers' design should be, solved non-interactively,
   so `ui.diff-editor` is untested. Configure a scripted tool and use `jj squash -i` to move exactly
   one hunk; grade the resulting trees.
+  *Corrected against the binary-verified survey: N10 as written violates R3 and should not ship in
+  this form.* Requiring `-i` is a method constraint, and the survey removes the argument for it
+  from both ends. First, the interactive commands **fail fast rather than hang**: with stdin closed
+  `squash -i` / `split -i` / `commit -i` / `diffedit` print `Error: Failed to edit diff` and exit 1
+  within seconds, so an agent that reaches for `-i` loses a turn, not the trial — there is nothing
+  to protect the suite from. Second, every interactive route has a verified non-interactive
+  substitute (`jj squash <paths>` or `--from`/`--into`, `jj split -r X <paths> -m`,
+  `jj describe --stdin`, `jj resolve --tool :ours`/`:theirs`), so a verifier cannot tell the routes
+  apart from end state and must not try. The salvageable ask is "move exactly one hunk, leave the
+  rest of the commit alone", graded on the two resulting trees and route-agnostic — which is
+  essentially the survey's theme 2.1 (split by path) or 3.3 (absorb into a stack). If a task does
+  ship a scripted editor, note the in-tree operational caveat: a stray `editor.sh` left behind by a
+  solve already breaks floored working-copy guards on `diffedit_interactive` and
+  `split_commit_interactive`, so the verifier must tolerate it or the fixture must place it outside
+  the repo.
 - **N11 is not in the set.** Held in reserve, in rough priority order: conflicted bookmarks from a
   remote (`jj bookmark track`/`untrack`, local and remote both moved), config-layer precedence
   (`--user` vs `--repo`, `--include-overridden`), `jj fix` across a stack, `jj parallelize`,
   `jj simplify-parents`, `jj sparse`, `jj file annotate`, executable bits and symlinks,
   `jj op abandon`, `jj abandon --restore-descendants`, colocated HEAD races.
+
+### 4.2 N1–N10 against the survey's 39-theme menu
+
+*Added during reconciliation.* The ten below are a statement of coverage, not a shortlist. Where a
+survey theme covers the same ground, it ships with a verified fixture recipe and a prompt already
+written in a user's voice, and it wins. Survey tiers: 1 = single operation, 2 = two-to-three steps,
+3 = five-plus dependent operations, 4 = collaborative / colocated, 5 = diagnosis.
+
+| here | survey theme(s) | tier | verdict |
+|---|---|---|---|
+| N1 conflict propagates | 3.5 *resolve a propagated conflict once*, 2.4 *leave a conflict, build on it* | 3, 2 | Use the survey's. N1 conflates the two; they are better as one Tier 3 task, and 2.4 is a distinct and sharper Tier 2 |
+| N2 merge the agent creates | 1.5 *merge with ordered parents*, 4.2 *conflicted bookmark repair* | 1, 4 | N2 is a hybrid the menu lacks — a merge the agent **creates** *and* resolves. Keep N2's shape, take 1.5's `parents.map(...)` grading |
+| N3 evolog as recovery | 3.6 *recover from your own mistake*, 5.5 *which operation lost this file* | 3, 5 | Use 3.6. It is the deeper composition and the survey flags it as the tier's highest grader-artifact risk, with the mitigation (change-id replay, no string matching) |
+| N4 revsets the agent writes | 5.3, 5.4, 5.6; 3.7 *messy history → mergeable* | 5, 3 | Prefer 3.7: it makes the revset the *route* to an action rather than the deliverable, which dodges the zero-tool-call confound |
+| N5 filesets | 2.1 *split by path* is the nearest | 2 | No dedicated fileset theme in the menu. N5 is additive; keep it |
+| N6 immutability | none dedicated (5.4 uses `immutable()` as a query only) | — | **Additive.** The survey names immutability as hole C but ships no theme for it. N6 stands, and its "evaluate the alias, don't string-match the config" design is now mandatory (§4.0.2 #7) |
+| N7 op log beyond undo | 5.3 *what did the last operation do* | 5 | Same task. Use the survey's phrasing and its `--at-op` differencing rule |
+| N8 divergence | 2.7 *clear a divergent change*, 4.3 *divergent change repair* | 2, 4 | Neither is new (see N8 above). If one ships, ship 4.3 — the two-actor version pairs divergence with a conflicted bookmark |
+| N9 duplicate a range | none | — | **Additive.** No duplicate theme in the menu; keep it |
+| N10 configured diff editor | none; superseded by 2.1 / 3.3 | 2, 3 | **Do not ship as written** — R3 violation, see above |
+
+Two gaps run the other way, and both are this document's to fill rather than the survey's:
+
+- **The menu has no workspace theme at all.** None of the 39 touches `jj workspace`, even though
+  the survey's own capability map covers it. `workspace_add` and `workspace_update_stale` are
+  therefore not replaceable from the menu, which is part of why they stay in §5.
+- **The menu has no immutability theme and no duplicate theme**, per the table. N6 and N9 are the
+  only routes to holes C and to `jj duplicate` respectively.
 
 ---
 
@@ -426,8 +655,13 @@ is wanted, `status_ignored` is the one to bring back: its verifier is the strong
 | Rewriting history in place (7) | `squash_range`, `split_commit_interactive`, `restore_interactive`, `absorb_changes`, `edit_commit_message`, `abandon_commits`, **N9** |
 | Conflicts and merges (3) | `rebase_branch`, **N1**, **N2** |
 | Recovery, divergence, the op log (5) | `undo_mistaken_rebase`, `operation_recovery`, **N3**, **N7**, **N8** |
-| Query, config, immutability (5) | `template_customize_log_output`, **N4**, **N5**, **N6**, **N10** |
+| Query, config, immutability (5) | `template_customize_log_output`, **N4**, **N5**, **N6**, ~~**N10**~~ → a Tier 3 theme |
 | Files, remotes, workspaces (4) | `track_untracked_file`, `git_fetch_remote`, `workspace_add`, `workspace_update_stale` |
+
+*Corrected against the binary-verified survey.* N10 is struck (§4 — it grades HOW, and the
+interactive commands it was designed around fail fast rather than hang, so there is nothing to
+protect against). Its slot goes to a Tier 3 composition theme per amendment 2 below. Read every
+**N** in this table as "the survey theme that covers this ground", not as the sketch in §4.
 
 **Why 24 and not 20 or 40.** At five attempts per task per model, 24 tasks is 120 trials per
 model — each task worth about 4% of the headline. That matters because grader artifacts are not
@@ -438,8 +672,79 @@ model comparison by 5%+ and can invert a skill A/B. Above roughly 30 the margina
 nothing: 36 of the current 53 produced no separation at all, so headroom comes from difficulty,
 not count. 24 is the smallest number at which one bad task cannot dominate.
 
-**What it costs.** Ten new bootstraps, verifiers, floor files and a measured no-agent run each.
-The 24 cuts and 7 merges are deletions. Two prerequisites, both already precedented in-tree:
+### 5.1 The headline survives the reconciliation. Three amendments to how it is reached
+
+**24 tasks — 14 kept, 10 new — stands, and stands unchanged as the *shipping* target.** The
+survey's §8.2 recommends 30–40 instead, weighted 15/25/30/20/10 across its five tiers. I am not
+adopting that number, and the reason is the survey's own strongest measurement: **at fixed budget,
+N versus T is a wash** — the trial count T cancels in the non-centrality parameter, so only *which*
+tasks are in the design matters, and saturated tasks contribute **exactly zero**, verified equality
+rather than an approximation. If count is not the power lever, then 30–40 is not a power argument;
+it is an insurance argument about not knowing in advance which tasks will discriminate. That is a
+real concern and it is answered below by authoring a superset, not by shipping one. Meanwhile the
+argument *for* 24 is about a different failure mode — a single grader artifact dominating a model
+comparison — which the survey does not address and which its own data makes more pressing, not
+less, since it documents a fourth measured artifact (opus's single loss in 265 trials was a
+literal-substring test rejecting a correct `jj -R <dir> git import`).
+
+What the survey's evidence *does* change is everything about how the ten are chosen and what shape
+they are.
+
+**Amendment 1 — author sixteen, ship the ten that discriminate.** The survey measures held-out
+precision of task screening at **0.51 on haiku and 0.00 on opus**, with selected tasks' failure
+rates inflated **2.18×**. Nobody can pick the ten winners on paper, and this document's §4
+sketches are exactly that kind of paper pick. Author ~16 from the survey's 39-theme menu, run one
+screening sweep, and ship the ten with the highest *observed* failure rates — selecting on failure
+rate, not on p(1−p), because a p(1−p) criterion scores `squash_range` (the most informative task in
+the current suite, per-task information 0.667 against 0.024–0.12 for everything else) at zero and
+throws it away. Confirm the survivors on fresh trials, since screening precision on opus was
+measured at zero. The six that do not ship are not wasted: they are the reserve when a shipped task
+saturates.
+
+**Amendment 2 — at least six of the ten must compose five or more dependent operations.** This is
+the substantive change. §4.0's hole F is where the ceiling lives, and the N1–N10 sketches are
+mostly two-to-three-step, one-capability-per-task designs that do not touch it. Adding capability
+coverage to a suite of short tasks produces a broader suite with the same ceiling. Concretely, draw
+those six from the survey's Tier 3: 3.1 (working copy → reviewable stack), 3.2 (mid-stack bug fix),
+3.3 (absorb review feedback), 3.5 (resolve a propagated conflict once), 3.6 (recover from your own
+mistake), 3.7 (messy history → mergeable), 3.10 (extract a commit into its own branch). Budget for
+Tier 3 trials costing **2–3× the current suite mean** — the showcase five already cost haiku 1.94×,
+so sizing off the suite mean underestimates by roughly half.
+
+**Amendment 3 — the tier row "Query, config, immutability" loses N10 and the five saturated keeps
+are provisional.** N10 does not ship as written (§4). Its slot goes to a Tier 3 theme. Separately,
+five of the 14 kept — `absorb_changes`, `undo_mistaken_rebase`, `operation_recovery`,
+`git_fetch_remote`, `workspace_add` — were **not** among the nine that separated; they are held for
+capability coverage alone, which means by the survey's finding they contribute exactly zero to any
+paired comparison, the same as the eight this document already demotes to a smoke tier. The
+distinction that justifies keeping them is coverage, not power, and it is temporary: four of the
+five have a deeper replacement on the survey's menu (3.3 for absorb, 3.6 for op-log recovery, 4.1
+and 4.4 for fetch-and-reconcile). Only `workspace_add` has none, because the menu has no workspace
+theme at all. **They leave when their replacements land and screen well, and not before.**
+`workspace_update_stale` is the sixth question mark and a different one: it did separate, but a
+third of its scored credit rides on an English assertion (§1, R2), so part of the separation it
+shows may be a grader artifact. Repair it before the screening sweep, then re-measure; if the
+separation was the English, it belongs in the smoke tier too.
+
+*One place the survey is wrong, recorded so this document does not propagate it.* The survey lists
+a stale working copy as **NOT REPRODUCED** against the binary and marks the staleness error text
+`[unverified]`, on the strength of one probe that mutated the default workspace's working-copy
+commit from a second workspace. Our tree contradicts that: `workspace_update_stale`'s fixture
+produces a stale working copy at `environment/Dockerfile:45-49` by running `jj rebase -r default@
+-d @` **from the second workspace**, and `bootstrap/test_initial_state.py:20-23` asserts that
+`jj st` in the project then exits non-zero with `stale` in its output. That bootstrap test is part
+of the image build. The survey's probe evidently used a different mutation or read `jj st` from the
+wrong workspace; the correct statement is that the route is `jj rebase -r <workspace>@`, not that
+staleness cannot be reproduced. This does not rescue the English assertion in the *verifier* —
+grading jj's stderr text is wrong for the reason `undo_mistaken_rebase` is the reference case —
+but it does mean the task's premise is sound and the task is worth repairing rather than cutting.
+
+Net effect on the headline: **24 shipping tasks, 14 kept and 10 new, drawn from ~16 authored** —
+and of the 14, five (six counting `workspace_update_stale`) carry an explicit expiry condition.
+
+**What it costs.** *Revised: sixteen* new bootstraps, verifiers, floor files and a measured
+no-agent run each, of which ten ship — and six of the sixteen are Tier 3 fixtures, which are the
+expensive ones. The 24 cuts and 7 merges are deletions. Prerequisites, all precedented in-tree:
 
 1. The mechanical `@`-relaxation on the ten incidental pins, reusing
    `restore_interactive:199-201`'s `({handover}) & ::@` pattern. This is the single
@@ -448,12 +753,42 @@ The 24 cuts and 7 merges are deletions. Two prerequisites, both already preceden
    `## Background`. The exemption at `:239-247` covers `_terse` arms only, so a *base* task
    written in a user's voice fails the lint today. The rule has to change with the prompts, or
    the format keeps two token headings and re-invites the spec voice.
+3. *Added during reconciliation:* an `anchor_exemptions.json` decision for every new task whose
+   asked-for work legitimately removes a change id. On the current menu that is N8/theme 4.3
+   (abandon a divergent side) and theme 4.8 (withdraw an experiment), and the general list of
+   id-dropping operations measured on 0.38 is `jj abandon`, `jj squash --from B --into A`,
+   `jj new`/`edit`/`prev`/`next` off an empty undescribed `@`, `jj workspace forget` and
+   `jj op restore`. A green pre-sweep pass **cannot** detect a missing exemption, because the
+   untouched image never does the work that breaks the assertion — only a correct solve reveals it,
+   and one absent file already made `git_import` unpassable in all 11 arms of a sweep, control
+   included.
+4. *Added during reconciliation:* a decision on the pin. The survey argues for re-pinning off
+   0.38.0 (six releases stale) before authoring, on the grounds that the authoring cost is near
+   zero now and enormous once sixteen fixtures exist, and that several things it documents as
+   hidden-but-functional on 0.38 — `--allow-new`, `jj op undo`, `git_head()`, `git_refs()`,
+   `diff_contains()`, `ui.revsets-use-glob-by-default` — are **removed** by 0.42/0.43. Its sharpest
+   case is `jj next -n 2` (§4.0.1): the newer spelling *succeeds with different semantics* on 0.38,
+   so a task built on it discriminates on version drift rather than on jj understanding. This
+   proposal takes no position on re-pinning, but the choice has to be made **before** authoring,
+   and if we stay at 0.38 we should decide explicitly whether version-drift traps are features of
+   the suite or noise in it. Note that comparability is not the deciding factor: the pending
+   `WORKDIR` and grading relaxation is expected to saturate `squash_range` and void the existing
+   power figures regardless, so nothing new is comparable to the 795-trial baseline either way.
 
 **What it buys.** Every task in the set either separated three model tiers or holds a capability
 nothing else reaches. The ten new ones sit where git habits actively mislead — conflicts you carry
 rather than resolve, recovery through the evolog, rewrites the repo refuses — which is where the
 measured failures already cluster. And the sweep halves: 265 trials per model becomes 120, so the
 new tasks are paid for out of the saving.
+
+*Corrected against the binary-verified survey — one claim in that paragraph is now weaker and one
+is stronger.* Weaker: "either separated or holds a capability" is doing more work than it should,
+because six of the 14 kept are in the second category and the second category contributes exactly
+zero to a paired comparison (amendment 3). Stronger: "where git habits actively mislead" now has a
+verified catalogue behind it rather than an intuition — the silent-success family in §4.0.1, where
+jj exits 0 having done nothing and the wrong agent finishes confidently. Prefer new tasks that sit
+on a silent-success path over new tasks that merely cover an uncovered command; the first tests the
+mental model, the second tests discoverability, and R1 says only the first is worth a slot.
 
 **One thing this proposal does not fix.** Prompt voice is orthogonal to all of the above. The
 terse arms exist to measure it and carry byte-identical verifiers, which is the right design; but

@@ -1,0 +1,1 @@
+`feature-branch` in `/home/user/repo` needs to go on top of `main`. You'll hit a conflict — keep both sides, main's line first and the feature line after it — and resolve it in the commit that actually conflicts, not in a fixup commit on top.

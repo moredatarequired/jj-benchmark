@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Regenerate bootstrap/task.json task_description from instruction.md.
+"""Regenerate bootstrap/task.json task_name and task_description.
 
 The JSON duplicates instruction.md, and the JSON is what the harness actually
 hands the agent -- so hand-editing the instruction alone silently leaves the
 agent on the old text. `scripts/lint_tasks.py` fails CI on that drift; run this
 after every instruction.md edit instead of touching the JSON by hand.
+
+task_name is regenerated from the DIRECTORY NAME for the same reason: a task
+directory copied to make a prompt variant (tasks/<name>_terse/) inherits the
+original's task_name, which lint_tasks.py rejects, and hand-fixing it is exactly
+the step that gets forgotten. The directory name is the name harbor uses
+(LocalTaskId resolves it from the path), so it is the authority here too.
 
 Each file's existing trailing-newline state is preserved: 49 of the 53 task.json
 files end without one, 4 end with one, and normalising either way would produce
@@ -25,6 +31,7 @@ def main() -> None:
             continue
         before = path.read_text(encoding="utf-8")
         data = json.loads(before)
+        data["task_name"] = task_dir.name
         data["task_description"] = instruction.read_text(encoding="utf-8")
         # ensure_ascii=False keeps non-ASCII (e.g. undo_mistaken_rebase's em dash)
         # literal rather than \u-escaped, matching the committed files.

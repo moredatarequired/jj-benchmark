@@ -18,6 +18,8 @@ run has burned an hour of GPU-free-but-not-free CI time:
     the schema, or that exempts a bootstrap commit without saying why
   * a tests/vacuity_floor.json that is missing, malformed, or stale with
     respect to the tests defined in tests/test_final_state.py
+  * a prompt-variant task (tasks/<base>_terse/) that has drifted from its base
+    task anywhere other than instruction.md
 
 It also prints an inventory of things that are *policy*, not correctness --
 which instruction files use "## Implementation" vs "## Implementation Guide"
@@ -98,6 +100,41 @@ NETWORK_MODE_PHASES = ("environment", "agent", "verifier")
 
 # Sections instructions must carry. Agents are prompted against these.
 REQUIRED_INSTRUCTION_SECTIONS = ("## Requirements", "## Background")
+
+# ---------------------------------------------------------------------------
+# Prompt-variant arms
+# ---------------------------------------------------------------------------
+#
+# tasks/<base>_terse/ is a second arm of tasks/<base>/ whose ONLY difference is
+# instruction.md: a short request in a user's voice instead of a specification
+# written against the verifier. It exists to measure how much of this suite's
+# saturation comes from the prompt handing over the fixture and the
+# discriminating hint, so the two arms have to share one fixture and one
+# verifier exactly -- otherwise the comparison measures the copy as well as the
+# prompt. check_variant_identity() is what makes that a property CI enforces
+# rather than one a copy is hoped to have preserved, and it is also what makes
+# it sound for .github/workflows/tasks.yml to keep the variants out of the
+# nightly container matrix: their images and their tests are provably the base
+# task's.
+VARIANT_SUFFIX = "_terse"
+
+# instruction.md is the variable under test, and bootstrap/task.json carries a
+# byte copy of it (check_task_json).
+VARIANT_FREE_FILES = ("instruction.md",)
+
+# JSON files that must be identical apart from the keys that name the task.
+# Every one of these values is checked against the directory name elsewhere in
+# this file, so here it is only the REST of the object that has to agree.
+VARIANT_RESTAMPED = {
+    "bootstrap/task.json": ("task_name", "task_description"),
+    "tests/vacuity_floor.json": ("task",),
+    EXEMPTIONS_FILE: ("task",),
+}
+
+# Per-build artifact: gitignored, present only between a
+# `scripts/bootstrap_anchor.py --write` and the sweep that consumes it, and
+# different in every build by construction. Not part of the comparison.
+VARIANT_IGNORED = ("tests/bootstrap_anchor.json",)
 
 # e.g. "jj-v0.38.0-x86_64-unknown-linux-musl.tar.gz" -> "0.38.0"
 JJ_VERSION_RE = re.compile(r"jj-v(\d+\.\d+\.\d+)")
@@ -187,11 +224,26 @@ def check_task_toml(task: str, task_dir: Path, findings: Findings) -> dict:
     return config
 
 
+def variant_base(task: str) -> str | None:
+    """The task a prompt variant is an arm of, or None if it is not one."""
+    if task.endswith(VARIANT_SUFFIX) and len(task) > len(VARIANT_SUFFIX):
+        return task[: -len(VARIANT_SUFFIX)]
+    return None
+
+
 def check_instruction(task: str, task_dir: Path, findings: Findings) -> str:
     path = task_dir / "instruction.md"
     if not path.is_file():
         return ""
     text = path.read_text(encoding="utf-8")
+    if variant_base(task):
+        # The whole point of the variant arm is an instruction that is NOT
+        # shaped like a specification. A "## Requirements" heading over a
+        # one-sentence request would reintroduce the register the arm exists to
+        # remove, so the section requirement does not apply to it. Nothing else
+        # is relaxed: check_variant_identity() holds the rest of the directory
+        # to the base task byte for byte.
+        return text
     for section in REQUIRED_INSTRUCTION_SECTIONS:
         # Match at line start so a mention in prose does not satisfy the check.
         if not re.search(rf"^{re.escape(section)}\s*$", text, re.MULTILINE):
@@ -558,6 +610,85 @@ def check_anchor_exemptions(task: str, task_dir: Path,
     return data
 
 
+def task_files(task_dir: Path) -> set[str]:
+    """Every file in a task directory, as a path relative to it."""
+    return {
+        str(p.relative_to(task_dir))
+        for p in task_dir.rglob("*")
+        if p.is_file() and str(p.relative_to(task_dir)) not in VARIANT_IGNORED
+    }
+
+
+def check_variant_identity(task: str, task_dir: Path, findings: Findings) -> str | None:
+    """A prompt variant must be its base task plus a different instruction.md.
+
+    This is the scientific control of the two-arm comparison, so it is a hard
+    check rather than a convention. If the arms' environment/ directories drift
+    apart they are no longer the same fixture (the bootstrap change ids are per
+    image build, and identical build contexts are what makes the variant's build
+    a cache hit off the base's); if their tests/ drift apart the two arms are
+    graded by different code and the difference in scores is not the prompt.
+    Both would be invisible in the results.
+
+    Returns the base task name for the inventory, or None when this is not a
+    variant.
+    """
+    base = variant_base(task)
+    if base is None:
+        return None
+    base_dir = TASKS_DIR / base
+    if not base_dir.is_dir():
+        findings.fail(
+            task,
+            f"is named as a prompt variant of {base!r} but tasks/{base}/ does "
+            "not exist. A variant that is not an arm of anything is just a task "
+            f"with a {VARIANT_SUFFIX!r} suffix.",
+        )
+        return None
+
+    here, there = task_files(task_dir), task_files(base_dir)
+    for rel in sorted(there - here):
+        findings.fail(task, f"is missing {rel}, which tasks/{base}/ has")
+    for rel in sorted(here - there):
+        findings.fail(
+            task,
+            f"has {rel}, which tasks/{base}/ does not. A variant differs from "
+            "its base task in instruction.md and nothing else.",
+        )
+
+    for rel in sorted(here & there):
+        if rel in VARIANT_FREE_FILES:
+            continue
+        mine, theirs = task_dir / rel, base_dir / rel
+        if rel in VARIANT_RESTAMPED:
+            try:
+                a = json.loads(mine.read_text(encoding="utf-8"))
+                b = json.loads(theirs.read_text(encoding="utf-8"))
+            except ValueError:
+                continue  # already reported by the per-file checks
+            if not isinstance(a, dict) or not isinstance(b, dict):
+                continue
+            for key in VARIANT_RESTAMPED[rel]:
+                a.pop(key, None)
+                b.pop(key, None)
+            if a != b:
+                findings.fail(
+                    task,
+                    f"{rel} differs from tasks/{base}/{rel} in more than "
+                    f"{', '.join(VARIANT_RESTAMPED[rel])}. Only the fields that "
+                    "name the task may be re-stamped in a variant.",
+                )
+            continue
+        if mine.read_bytes() != theirs.read_bytes():
+            findings.fail(
+                task,
+                f"{rel} is not byte-identical to tasks/{base}/{rel}. The two "
+                "arms must share one fixture and one verifier, or the "
+                "difference between their scores is not the prompt.",
+            )
+    return base
+
+
 def print_inventory(
     instruction_sections: dict[str, str],
     network_modes: dict[str, Counter],
@@ -565,6 +696,7 @@ def print_inventory(
     shared_uniform: dict[str, bool],
     floors: dict[str, dict],
     exemptions: dict[str, dict],
+    variants: dict[str, str],
 ) -> None:
     """Non-fatal policy inventory. Drift here shows up as changed numbers."""
     buckets: dict[str, list[str]] = defaultdict(list)
@@ -632,6 +764,16 @@ def print_inventory(
                 print(f"    {str(entry.get('reason', '')).strip()}")
     print(f"  {len(exemptions)} of {len(floors)} task(s) claim an exemption")
 
+    # The prompt-variant arms. Printed because "which tasks exist in two
+    # prompt registers" is exactly the kind of thing that should be visible in
+    # the CI log rather than inferred from directory names.
+    print(f"\nprompt variants ({VARIANT_SUFFIX}, verified identical to their base "
+          "task apart from instruction.md):")
+    if not variants:
+        print("  none")
+    for task in sorted(variants):
+        print(f"  {task:<36} arm of {variants[task]}")
+
     print("\npinned jj version: " + (f"v{jj_version}" if jj_version else "(unknown)"))
     print("shared verifier files:")
     for rel in SHARED_TEST_FILES:
@@ -656,6 +798,7 @@ def main() -> int:
     network_modes: dict[str, Counter] = {p: Counter() for p in NETWORK_MODE_PHASES}
     floors: dict[str, dict] = {}
     exemptions: dict[str, dict] = {}
+    variants: dict[str, str] = {}
 
     for task_dir in task_dirs:
         task = task_dir.name
@@ -688,6 +831,9 @@ def main() -> int:
         exempt = check_anchor_exemptions(task, task_dir, findings)
         if exempt is not None:
             exemptions[task] = exempt
+        base = check_variant_identity(task, task_dir, findings)
+        if base is not None:
+            variants[task] = base
 
         for rel in SHARED_TEST_FILES:
             path = task_dir / rel
@@ -708,6 +854,7 @@ def main() -> int:
         shared_uniform=shared_uniform,
         floors=floors,
         exemptions=exemptions,
+        variants=variants,
     )
 
     findings.report()

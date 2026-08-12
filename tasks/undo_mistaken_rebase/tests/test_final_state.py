@@ -57,13 +57,33 @@ untouched bootstrap 0/2; `jj rebase` + `jj undo`, + `jj op undo`, + `jj op
 revert`, + `jj op restore` all 2/2; the unrelated-rebase cheat 0/2; rebase
 without an undo, and the snapshot-undo above, 1/2.
 
+WHICH COMMITS THE REPLAY IS ABOUT
+
+`base`, `A` and `B` are resolved through the BOOTSTRAP ANCHOR (tests/anchor.py):
+a measurement taken on the host, from the untouched image, before the agent ran.
+A `description(substring:...)` lookup asks about whatever now carries that text,
+so renaming the three originals and staging the whole rebase-and-revert story on
+a parallel stack built from `root()` satisfied both scored tests -- destroying
+nothing, so the integrity fixture held, and the four end-state tests that would
+have noticed the duplicates are all in the vacuity floor and earn nothing.
+
+Anchored ids are FULL (32 characters), so the templates below render full change
+ids too: comparing a 12-character prefix against a full id never matches and
+would manufacture failures.
+
+In cold CI there is no anchor file -- change ids are random per image build, so no
+committed file could hold them -- and each resolver falls back to the description
+revset this file used before, printing that no identity claim was made.
+
 TWO THINGS THIS FILE DOES NOT CLAIM
 
-  * **This is a consistency check, not an integrity check.** Replay
-    authenticates a history against itself. A repository wiped and rebuilt by
+  * **The replay is a consistency check, not an integrity check.** Replay
+    authenticates a history against itself: a repository wiped and rebuilt by
     hand -- including one where the mistaken rebase was staged deliberately --
-    agrees with itself and would pass. Anchoring that requires a value captured
-    before the agent ran, which this benchmark does not yet carry.
+    agrees with its own record. What rules that out is not the replay but the
+    anchor: the values the replay is compared against come from outside the
+    repository, and the integrity fixture in conftest.py checks separately that
+    the bootstrap's commits and its last operation are still there.
   * **Operation counts are not asserted.** They are not a fair signal: the
     agent's first jj command can append a `snapshot working copy` operation on
     its own, so totals differ between equally correct solves. Every assertion
@@ -79,12 +99,18 @@ exist to fail loudly if a solve destroys something on its way.
 
 import subprocess
 
+from anchor import change_id_or_fallback
+
 REPO = "/home/user/repo"
 
 # Bootstrap history: root() <- base <- A (main) <- B. These are the bootstrap's
 # own commit messages, from environment/Dockerfile, not jj output.
 COMMITS = ["base", "A", "B"]
 PARENT_OF = {"base": "", "A": "base", "B": "A"}
+
+# Marker asking change_id_or_fallback() for "nothing", so the caller can tell the
+# anchored path from the fallback path. It never reaches jj.
+NO_ANCHOR = ""
 
 # The commit the task rebases, and the destination it is rebased onto.
 REBASED = "B"
@@ -123,16 +149,37 @@ def revset(description):
     return f'description(substring:"{description}")'
 
 
+def graded(description):
+    """A revset naming the BOOTSTRAP's commit that carried `description`.
+
+    `change_id(<id>)` rather than the bare id, and `present()` around it, because
+    the replay asks about operations at which the commit did not exist yet (a
+    bare id that resolves to nothing makes jj exit non-zero) and because a bare
+    id errors outright on a divergent change.
+
+    Falls back to the description revset when there is no anchor, which is the
+    cold-CI case and is exactly what this file did before.
+    """
+    change = change_id_or_fallback(description, NO_ANCHOR, repo=REPO)
+    if not change:
+        return revset(description)
+    return f"present(change_id({change}))"
+
+
 def operations():
     """Every operation id, newest first, full hex so no prefix can be ambiguous."""
     return jj("op", "log", "--no-graph", "-T", 'id ++ "\\n"').split()
 
 
 def change_id_of(description, op=None):
-    """The change id of the commit described `description`, or None if absent."""
+    """The change id of the bootstrap's `description` commit, or None if absent.
+
+    Full change ids: the anchor stores full ones and a prefix never compares
+    equal to a full id.
+    """
     args = (
-        "log", "-r", revset(description), "--no-graph",
-        "-T", 'change_id.short(12) ++ "\\n"',
+        "log", "-r", graded(description), "--no-graph",
+        "-T", 'change_id ++ "\\n"',
     )
     out = at_op(op, *args) if op else jj(*args)
     found = out.split()
@@ -150,8 +197,8 @@ def parents_of(description, op=None):
     every operation before the bootstrap created it).
     """
     args = (
-        "log", "-r", revset(description), "--no-graph",
-        "-T", 'parents.map(|p| p.change_id().short(12)).join(" ") ++ "\\n"',
+        "log", "-r", graded(description), "--no-graph",
+        "-T", 'parents.map(|p| p.change_id()).join(" ") ++ "\\n"',
     )
     out = at_op(op, *args) if op else jj(*args)
     lines = [line for line in out.splitlines() if line.strip()]
@@ -165,10 +212,13 @@ def parents_of(description, op=None):
 
 
 def operations_with_b_on(parent_description):
-    """Operations at which `B` sat on exactly the given commit.
+    """Operations at which the bootstrap's `B` sat on exactly the given commit.
 
     Compared as change ids, which survive a rebase, so this is "the same commit
-    on a different parent" and not "some commit that happens to be described B".
+    on a different parent" and not "some commit that happens to be described B"
+    -- and both sides are the bootstrap's own commits, resolved through the
+    anchor, so it is not "some pair of commits that were staged to look like it"
+    either.
     """
     target = change_id_of(parent_description)
     assert target is not None, (
@@ -223,7 +273,7 @@ def test_mistaken_rebase_was_reverted():
     )
 
     conflicted = jj(
-        "log", "-r", revset(REBASED), "--no-graph", "-T", 'conflict ++ "\\n"'
+        "log", "-r", graded(REBASED), "--no-graph", "-T", 'conflict ++ "\\n"'
     ).split()
     assert conflicted == ["false"], (
         f"Commit {REBASED!r} is still in a conflicted state ({conflicted}), so "

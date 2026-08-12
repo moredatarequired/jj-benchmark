@@ -14,9 +14,23 @@ not jj's English operation descriptions ("prev: ... -> ...", "new empty
 commit"), which are wording jj is free to change and which would also pin the
 solution to one particular command. A single `jj new B` produces one operation
 and therefore one position; it cannot fake three.
+
+WHICH commits the route is measured against comes from the BOOTSTRAP ANCHOR
+(tests/anchor.py) rather than from a description lookup in the repository being
+graded. Descriptions are attacker-writable: renaming the four originals and
+walking the working copy along a parallel A/B/C/D stack built from `root()`
+satisfied a `description(substring:...)` lookup, and the two tests that would
+have noticed the extra commits are both in the vacuity floor and so earn
+nothing. A change id is generated randomly at commit creation, survives every
+legitimate rewrite, and cannot be written by hand. In cold CI, where there is no
+anchor file by construction, commit_id() falls back to the description lookup
+and says that no identity claim was made.
 """
 
 import subprocess
+from functools import lru_cache
+
+from anchor import change_id_or_fallback
 
 PROJECT_DIR = "/home/user/myproject"
 
@@ -62,10 +76,24 @@ def revset(description):
     return f'description(substring:"{description}")'
 
 
+@lru_cache(maxsize=None)
 def commit_id(description):
-    """The single commit with this description, as a full commit id."""
+    """The full commit id of the BOOTSTRAP's commit described `description`.
+
+    Addressed by its anchored change id, so this is the commit the task handed
+    over and not merely one that carries the right description now. The commit id
+    is then resolved from that change id at verification time rather than taken
+    from the anchor: a commit id moves on every legitimate rewrite while the
+    change id does not, and the working-copy positions this file compares are
+    commit ids.
+
+    Cached because it is called from inside the replay loop; jj is read-only here
+    either way.
+    """
+    graded = change_id_or_fallback(description, revset(description),
+                                  repo=PROJECT_DIR)
     found = out(
-        "log", "-r", revset(description), "--no-graph", "-T",
+        "log", "--ignore-working-copy", "-r", graded, "--no-graph", "-T",
         'commit_id ++ "\\n"',
     ).split()
     assert len(found) == 1, (

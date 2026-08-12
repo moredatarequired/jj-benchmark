@@ -18,13 +18,35 @@ Two deliberate design choices:
   * `evolog`, not the deprecated `obslog` alias. What the *agent* used is not
     inspected and either name is fine, but the verifier's own calls must not
     depend on an alias a future jj release can drop.
+
+WHICH CHANGE'S EVOLUTION
+========================
+
+The evolution is read at the change the BOOTSTRAP handed over, addressed by its
+anchored change id (tests/anchor.py), not at whatever `@` happens to be. A bare
+`jj evolog` asks about the working copy, so `jj new -r 'root()' -m x;
+jj describe -m y; jj evolog > /home/user/obslog.txt` produced a change with two
+versions and a report that faithfully described it -- destroying nothing, so the
+integrity fixture held, and passing every assertion here. Naming the bootstrap's
+own change is what makes the report be about the change the task is about.
+
+In cold CI there is no anchor file (change ids are random per image build, so it
+cannot be a committed constant) and the resolver falls back to `@`, printing that
+no identity claim was made.
 """
 
 import os
 import re
 import subprocess
 
+from anchor import change_id_or_fallback
+
 REPO_DIR = "/home/user/repo"
+
+# The bootstrap's working-copy change, by its description first line. The
+# bootstrap describes it "v1" and then "v2", so "v2" is the description the
+# anchor recorded and it names exactly one commit.
+GRADED_CHANGE = "v2"
 REPORT_FILE = "/home/user/obslog.txt"
 
 # Any CSI escape sequence, which covers the SGR colour codes jj emits.
@@ -64,12 +86,19 @@ def jj(*args):
     return result.stdout
 
 
-def evolution():
-    """[(commit_id, description_first_line)] for the working-copy change.
+def graded_change():
+    """The bootstrap's working-copy change, as a revset."""
+    return change_id_or_fallback(GRADED_CHANGE, "@", repo=REPO_DIR)
 
-    Newest version first, read straight out of the repository.
+
+def evolution():
+    """[(commit_id, description_first_line)] for the bootstrap's change.
+
+    Newest version first, read straight out of the repository -- at the anchored
+    change id, so it is the evolution of the change the task handed over.
     """
-    out = jj("evolog", "--no-graph", "--color=never", "-T", EVOLOG_TEMPLATE)
+    out = jj("evolog", "-r", graded_change(), "--no-graph", "--color=never",
+             "-T", EVOLOG_TEMPLATE)
     entries = []
     for line in out.splitlines():
         if not line:
@@ -89,10 +118,30 @@ def report_text():
 
 
 def test_report_file_exists():
+    """There is a report, and it is a report about the bootstrap's change.
+
+    Existence and non-emptiness on their own are satisfied by any file at all,
+    which left a third of this task's credit collectable by a report of a
+    fabricated change. So it also has to identify the current version of the
+    anchored change -- the one thing every faithful rendering contains, and the
+    weakest claim that is still about the right change.
+    """
     assert os.path.isfile(REPORT_FILE), (
         f"Expected the evolution report at {REPORT_FILE}, but no such file exists."
     )
     assert os.path.getsize(REPORT_FILE) > 0, f"{REPORT_FILE} is empty."
+
+    entries = evolution()
+    assert entries, (
+        "The repository's graded change has no versions at all, so the "
+        "repository is not in its expected starting shape."
+    )
+    newest = entries[0][0]
+    assert newest[:ID_PREFIX_LEN] in report_text(), (
+        f"{REPORT_FILE} does not mention {newest[:ID_PREFIX_LEN]}, the commit "
+        f"the bootstrap's own change points at now. The report has to be about "
+        f"that change; a report about some other change is not this task."
+    )
 
 
 def test_report_covers_every_version_of_the_change():

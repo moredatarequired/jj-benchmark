@@ -11,7 +11,11 @@ run has burned an hour of GPU-free-but-not-free CI time:
   * a bootstrap/task.json whose task_description has drifted from instruction.md
   * a Dockerfile pinning a different jj version from every other task
   * a Dockerfile that does not bake in the pinned verifier dependencies
-  * a tests/test.sh that has drifted out of sync with its 52 identical siblings
+  * a tests/test.sh, tests/anchor.py or tests/conftest.py that has drifted out
+    of sync with its 52 identical siblings
+  * a tests/conftest.py that no longer applies the bootstrap integrity anchor
+  * a tests/anchor_exemptions.json (optional, hand-written) that does not follow
+    the schema, or that exempts a bootstrap commit without saying why
   * a tests/vacuity_floor.json that is missing, malformed, or stale with
     respect to the tests defined in tests/test_final_state.py
 
@@ -38,6 +42,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TASKS_DIR = REPO_ROOT / "tasks"
 
 # Every task directory must contain exactly these, at these paths.
+#
+# tests/bootstrap_anchor.json is deliberately NOT here and is gitignored. jj
+# generates change ids randomly at commit creation, so the anchor describes an
+# image BUILD rather than a Dockerfile: two builds of the same Dockerfile
+# produce disjoint change id sets. It is generated on the host immediately
+# before a sweep (scripts/bootstrap_anchor.py --write) and tests/anchor.py
+# abstains when it is absent, so requiring it here -- or in CI, which always
+# builds cold -- would fail permanently.
 REQUIRED_FILES = (
     "instruction.md",
     "task.toml",
@@ -46,8 +58,29 @@ REQUIRED_FILES = (
     "environment/Dockerfile",
     "tests/test.sh",
     "tests/test_final_state.py",
+    "tests/anchor.py",
+    "tests/conftest.py",
     "tests/vacuity_floor.json",
 )
+
+# Shared verifier infrastructure: copied verbatim into all 53 tasks, because
+# harbor mounts only one task's tests/ directory at /tests and there is nowhere
+# else for a shared module to live. Divergence between copies is always a bug --
+# it means one task is being verified by different code from the other 52.
+SHARED_TEST_FILES = ("tests/test.sh", "tests/anchor.py", "tests/conftest.py")
+
+# tests/anchor_exemptions.json is OPTIONAL and per-task, so it is not in
+# REQUIRED_FILES and not in SHARED_TEST_FILES. Absent means "nothing this task
+# asks for removes a bootstrap commit", which is true of most tasks, and keeping
+# it absent rather than shipping 53 empty files is what makes the set of tasks
+# that DO claim an exemption reviewable at a glance. Unlike
+# tests/bootstrap_anchor.json it IS committed: it describes the task, not one
+# image build. The schema is enforced below; whether each entry actually names
+# one bootstrap commit needs a measurement and is checked by
+# scripts/bootstrap_anchor.py --write/--check.
+EXEMPTIONS_FILE = "tests/anchor_exemptions.json"
+EXEMPTION_LISTS = ("may_disappear", "may_be_divergent")
+EXEMPTION_KEYS = ("task", "may_disappear", "may_be_divergent", "maintained_by")
 
 # (table path, key) pairs that must be present in task.toml.
 REQUIRED_TOML_KEYS = (
@@ -256,22 +289,28 @@ def check_jj_versions_agree(pinned: dict[str, str], findings: Findings) -> str |
     return consensus
 
 
-def check_test_sh_identical(digests: dict[str, str], findings: Findings) -> None:
-    """tests/test.sh is boilerplate copied to every task; drift is a bug."""
+def check_shared_file_identical(
+    rel: str, digests: dict[str, str], findings: Findings
+) -> bool:
+    """A shared verifier file is copied to every task; drift is a bug.
+
+    Returns True when every copy agrees (or there are none to compare).
+    """
     if not digests:
-        return
+        return True
     counts = Counter(digests.values())
     if len(counts) == 1:
-        return
+        return True
     consensus, _ = counts.most_common(1)[0]
     for task, digest in sorted(digests.items()):
         if digest != consensus:
             findings.fail(
                 task,
-                "tests/test.sh differs from the shared copy used by "
+                f"{rel} differs from the shared copy used by "
                 f"{counts[consensus]} other task(s) (sha256 {digest[:12]} vs "
                 f"{consensus[:12]})",
             )
+    return False
 
 
 def check_vacuity_floor(task: str, task_dir: Path, findings: Findings) -> dict | None:
@@ -387,12 +426,145 @@ def check_test_sh_reads_floor(task: str, task_dir: Path, findings: Findings) -> 
         )
 
 
+def check_conftest_applies_anchor(task: str, task_dir: Path, findings: Findings) -> None:
+    """tests/conftest.py is what makes the anchor apply without 53 edits.
+
+    Same argument as check_test_sh_reads_floor: 53 byte-identical copies of a
+    conftest.py that no longer runs the check would leave the lint green while
+    every verifier silently stopped detecting a rebuilt repository. So assert the
+    two properties that make it work at all -- it calls the assertion, and it does
+    so from an AUTOUSE fixture. Autouse is load-bearing: written as a test
+    function the assertion would pass on the untouched image, land in
+    tests/vacuity_floor.json, and then be excluded from both sides of the
+    partial-credit fraction, so a detected cheat would still score
+    (scored-1)/scored instead of 0.
+    """
+    path = task_dir / "tests/conftest.py"
+    if not path.is_file():
+        return  # already reported by check_required_files
+    text = path.read_text(encoding="utf-8")
+    if "assert_bootstrap_anchor" not in text:
+        findings.fail(
+            task,
+            "tests/conftest.py does not call assert_bootstrap_anchor, so this "
+            "task's verifier cannot tell a solved repository from a rebuilt one",
+        )
+    if "autouse=True" not in text:
+        findings.fail(
+            task,
+            "tests/conftest.py has no autouse=True fixture, so the bootstrap "
+            "anchor is not applied unless a test opts in",
+        )
+
+
+def check_anchor_exemptions(task: str, task_dir: Path,
+                            findings: Findings) -> dict | None:
+    """Validate tests/anchor_exemptions.json, the one hand-written anchor input.
+
+    Every other anchor artefact is measured; this one is a human judgement about
+    what a task's instruction.md asks for, and it WEAKENS the integrity check for
+    the commits it names. So the schema is enforced hard, and above all the
+    `reason` is: an exemption without a reason is an unreviewable hole, and the
+    file exists to be read by the next person who wonders why a commit is allowed
+    to vanish.
+
+    Returns the parsed record for the inventory, or None when there is no file
+    (the normal case) or it is unusable (already reported).
+    """
+    path = task_dir / EXEMPTIONS_FILE
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        findings.fail(task, f"{EXEMPTIONS_FILE} does not parse: {exc}")
+        return None
+    if not isinstance(data, dict):
+        findings.fail(task, f"{EXEMPTIONS_FILE} is not a JSON object")
+        return None
+
+    for key in EXEMPTION_KEYS:
+        if key not in data:
+            findings.fail(task, f"{EXEMPTIONS_FILE} is missing the {key!r} key")
+    unknown = sorted(set(data) - set(EXEMPTION_KEYS))
+    if unknown:
+        findings.fail(
+            task,
+            f"{EXEMPTIONS_FILE} has unknown key(s) {', '.join(unknown)}; "
+            f"tests/anchor.py reads only {', '.join(EXEMPTION_KEYS)}",
+        )
+    if data.get("task") != task:
+        findings.fail(
+            task,
+            f"{EXEMPTIONS_FILE} records task {data.get('task')!r}, not {task!r}",
+        )
+    if not isinstance(data.get("maintained_by"), str) or not data.get("maintained_by"):
+        findings.fail(
+            task, f"{EXEMPTIONS_FILE} needs a non-empty 'maintained_by' string"
+        )
+
+    total = 0
+    for key in EXEMPTION_LISTS:
+        entries = data.get(key, [])
+        if not isinstance(entries, list):
+            findings.fail(task, f"{EXEMPTIONS_FILE}: {key!r} is not a list")
+            continue
+        seen: set[tuple[str, str]] = set()
+        for entry in entries:
+            total += 1
+            if not isinstance(entry, dict):
+                findings.fail(
+                    task, f"{EXEMPTIONS_FILE}: {key} contains a non-object entry"
+                )
+                continue
+            named = [k for k in ("description", "working_copy") if k in entry]
+            if len(named) != 1:
+                findings.fail(
+                    task,
+                    f"{EXEMPTIONS_FILE}: an entry in {key} must have exactly one "
+                    f"of 'description' or 'working_copy', not "
+                    f"{named or 'neither'}",
+                )
+                continue
+            value = entry[named[0]]
+            if not isinstance(value, str):
+                findings.fail(
+                    task,
+                    f"{EXEMPTIONS_FILE}: {key} entry {named[0]!r} is not a string",
+                )
+                continue
+            if (named[0], value) in seen:
+                findings.fail(
+                    task,
+                    f"{EXEMPTIONS_FILE}: {key} names {named[0]}={value!r} twice",
+                )
+            seen.add((named[0], value))
+            reason = entry.get("reason")
+            if not isinstance(reason, str) or not reason.strip():
+                findings.fail(
+                    task,
+                    f"{EXEMPTIONS_FILE}: the {key} entry for {named[0]}={value!r} "
+                    "has no non-empty 'reason'. An exemption switches off the "
+                    "integrity check for that commit, so it has to say in one "
+                    "line why the task's asked-for work removes it.",
+                )
+    if total == 0:
+        findings.fail(
+            task,
+            f"{EXEMPTIONS_FILE} exempts nothing. An empty file is not the same "
+            "as no file to a reviewer, and tests/anchor.py treats an absent file "
+            "as 'no exemptions' already -- delete it.",
+        )
+    return data
+
+
 def print_inventory(
     instruction_sections: dict[str, str],
     network_modes: dict[str, Counter],
     jj_version: str | None,
-    test_sh_uniform: bool,
+    shared_uniform: dict[str, bool],
     floors: dict[str, dict],
+    exemptions: dict[str, dict],
 ) -> None:
     """Non-fatal policy inventory. Drift here shows up as changed numbers."""
     buckets: dict[str, list[str]] = defaultdict(list)
@@ -441,11 +613,30 @@ def print_inventory(
         )
         print(f"    {task:<32} {record['floor']}/{record['tests']}  {names}")
 
+    # Printed on every run for the same reason the floored tests are: an
+    # exemption switches the integrity check off for one bootstrap commit, and a
+    # hole nobody can see is a hole nobody reviews. The reasons are printed in
+    # full -- they are one line each by construction.
+    print("\nanchor exemptions (tests/anchor_exemptions.json, hand-written):")
+    if not exemptions:
+        print("  none -- every task's bootstrap commits are checked strictly")
+    for task in sorted(exemptions):
+        record = exemptions[task]
+        for key in EXEMPTION_LISTS:
+            for entry in record.get(key) or []:
+                if not isinstance(entry, dict):
+                    continue
+                named = "description" if "description" in entry else "working_copy"
+                print(f"  {task:<28} {key:<16} {named}="
+                      f"{entry.get(named)!r}")
+                print(f"    {str(entry.get('reason', '')).strip()}")
+    print(f"  {len(exemptions)} of {len(floors)} task(s) claim an exemption")
+
     print("\npinned jj version: " + (f"v{jj_version}" if jj_version else "(unknown)"))
-    print(
-        "tests/test.sh:     "
-        + ("identical across all tasks" if test_sh_uniform else "DRIFTED")
-    )
+    print("shared verifier files:")
+    for rel in SHARED_TEST_FILES:
+        state = "identical across all tasks" if shared_uniform.get(rel, True) else "DRIFTED"
+        print(f"  {rel:<26} {state}")
 
 
 def main() -> int:
@@ -460,10 +651,11 @@ def main() -> int:
 
     findings = Findings()
     pinned_jj: dict[str, str] = {}
-    test_sh_digests: dict[str, str] = {}
+    shared_digests: dict[str, dict[str, str]] = {rel: {} for rel in SHARED_TEST_FILES}
     instruction_sections: dict[str, str] = {}
     network_modes: dict[str, Counter] = {p: Counter() for p in NETWORK_MODE_PHASES}
     floors: dict[str, dict] = {}
+    exemptions: dict[str, dict] = {}
 
     for task_dir in task_dirs:
         task = task_dir.name
@@ -492,21 +684,30 @@ def main() -> int:
         if record is not None:
             floors[task] = record
         check_test_sh_reads_floor(task, task_dir, findings)
+        check_conftest_applies_anchor(task, task_dir, findings)
+        exempt = check_anchor_exemptions(task, task_dir, findings)
+        if exempt is not None:
+            exemptions[task] = exempt
 
-        test_sh = task_dir / "tests/test.sh"
-        if test_sh.is_file():
-            test_sh_digests[task] = hashlib.sha256(test_sh.read_bytes()).hexdigest()
+        for rel in SHARED_TEST_FILES:
+            path = task_dir / rel
+            if path.is_file():
+                shared_digests[rel][task] = hashlib.sha256(path.read_bytes()).hexdigest()
 
     consensus_jj = check_jj_versions_agree(pinned_jj, findings)
-    check_test_sh_identical(test_sh_digests, findings)
+    shared_uniform = {
+        rel: check_shared_file_identical(rel, shared_digests[rel], findings)
+        for rel in SHARED_TEST_FILES
+    }
 
     print(f"Linted {len(task_dirs)} task(s) under {TASKS_DIR.relative_to(REPO_ROOT)}/")
     print_inventory(
         instruction_sections,
         network_modes,
         consensus_jj,
-        test_sh_uniform=len(set(test_sh_digests.values())) <= 1,
+        shared_uniform=shared_uniform,
         floors=floors,
+        exemptions=exemptions,
     )
 
     findings.report()

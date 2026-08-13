@@ -101,6 +101,37 @@ NETWORK_MODE_PHASES = ("environment", "agent", "verifier")
 # Sections instructions must carry. Agents are prompted against these.
 REQUIRED_INSTRUCTION_SECTIONS = ("## Requirements", "## Background")
 
+# Tasks whose instruction.md has been rewritten out of the specification
+# register and into a request in a user's voice -- the register the tasks/
+# <base>_terse/ arms were built to try out, now adopted as the task itself.
+#
+# The section rule below exists to stop a task shipping with an instruction that
+# forgets to say what is wanted. These prompts say it in one or two sentences,
+# so a "## Requirements" heading over them would put back exactly the shape they
+# were rewritten to remove -- the same reason variant_base() is exempted. The
+# exemption is a NAMED LIST rather than a "short instructions are exempt" rule
+# so that a task cannot fall out of the section check by accident: dropping the
+# sections from any task not written here still fails CI.
+#
+# The list is expected to grow as the rest of the suite is rewritten, and to
+# disappear once it covers every task and the section rule can go.
+REWRITTEN_PROMPT_TASKS = frozenset({
+    "abandon_commits",
+    "absorb_changes",
+    "edit_commit_message",
+    "git_fetch_remote",
+    "operation_recovery",
+    "rebase_branch",
+    "restore_interactive",
+    "split_commit_interactive",
+    "squash_range",
+    "template_customize_log_output",
+    "track_untracked_file",
+    "undo_mistaken_rebase",
+    "workspace_add",
+    "workspace_update_stale",
+})
+
 # ---------------------------------------------------------------------------
 # Prompt-variant arms
 # ---------------------------------------------------------------------------
@@ -236,13 +267,14 @@ def check_instruction(task: str, task_dir: Path, findings: Findings) -> str:
     if not path.is_file():
         return ""
     text = path.read_text(encoding="utf-8")
-    if variant_base(task):
-        # The whole point of the variant arm is an instruction that is NOT
+    if variant_base(task) or task in REWRITTEN_PROMPT_TASKS:
+        # The whole point of the variant arm -- and now of the rewritten base
+        # tasks in REWRITTEN_PROMPT_TASKS -- is an instruction that is NOT
         # shaped like a specification. A "## Requirements" heading over a
-        # one-sentence request would reintroduce the register the arm exists to
-        # remove, so the section requirement does not apply to it. Nothing else
-        # is relaxed: check_variant_identity() holds the rest of the directory
-        # to the base task byte for byte.
+        # one-sentence request would reintroduce the register they exist to
+        # remove, so the section requirement does not apply to them. Nothing
+        # else is relaxed: check_variant_identity() holds the rest of a
+        # variant's directory to the base task byte for byte.
         return text
     for section in REQUIRED_INSTRUCTION_SECTIONS:
         # Match at line start so a mention in prose does not satisfy the check.

@@ -1,1 +1,1 @@
-the commit that removed the legacy module also deleted a config file we need — restore it there, not on top
+the "remove legacy module" commit deleted settings.toml along with the module — put it back in that commit, changing nothing else

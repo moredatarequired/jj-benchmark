@@ -1,13 +1,1 @@
-# Customize jj log output with Templates
-
-## Background
-Jujutsu (`jj`) supports a powerful functional templating language to customize the output of commands like `jj log`. You can define template aliases in your config to reuse custom formats.
-
-## Requirements
-You have a jj repository initialized at `/home/user/repo`.
-Your task is to configure a new template alias named `log_custom` for the `jj` CLI.
-The alias must output the short change ID (`change_id.short()`), followed by `" | "`, followed by the first line of the commit description (`description.first_line()`), and ending with a newline (`"\n"`).
-
-## Constraints
-- Project path: `/home/user/repo`
-- The alias must be named exactly `log_custom`.
+add a template alias called log_custom that prints each commit's short change id, then " | ", then the first line of its description, one commit per line

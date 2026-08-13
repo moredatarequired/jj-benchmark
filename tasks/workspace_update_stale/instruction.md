@@ -1,13 +1,1 @@
-# Update Stale Workspace
-
-## Background
-You are working in a `jj` repository at `/home/user/myproject`. Another user (or process) recently modified the repository from another workspace (`/home/user/workspace_b`), which caused your current workspace's working copy to become stale. A stale working copy means the commit your workspace is sitting on was changed by an operation run elsewhere, so your working copy files no longer match it.
-
-## Requirements
-1. Update the stale working copy in `/home/user/myproject` so that it is no longer stale.
-2. After updating, you will see that `config.json` has been modified by the other workspace (the `status` field is now `"pending"` and `new` is `true`).
-3. Modify `config.json` by changing the `"status"` field from `"pending"` to `"active"`.
-4. Commit the change with the exact description `"Activate config"`.
-
-## Constraints
-- Project path: `/home/user/myproject`
+this workspace is stale — bring it up to date, then change config.json's status to "active" and commit that as "Activate config"

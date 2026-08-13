@@ -7,7 +7,6 @@ run has burned an hour of GPU-free-but-not-free CI time:
 
   * a task missing one of the seven files the harness expects
   * a task.toml that does not parse, or that omits a timeout / resource knob
-  * an instruction.md missing the sections agents are told to rely on
   * a bootstrap/task.json whose task_description has drifted from instruction.md
   * a Dockerfile pinning a different jj version from every other task
   * a Dockerfile that does not bake in the pinned verifier dependencies
@@ -96,44 +95,21 @@ REQUIRED_TOML_KEYS = (
 # Phases whose network_mode is tallied in the inventory, in report order.
 NETWORK_MODE_PHASES = ("environment", "agent", "verifier")
 
-# Sections instructions must carry. Agents are prompted against these.
-REQUIRED_INSTRUCTION_SECTIONS = ("## Requirements", "## Background")
-
-# Tasks whose instruction.md has been rewritten out of the specification
-# register and into a request in a user's voice -- the register the retired
-# tasks/<base>_terse/ arms were built to try out, now adopted as the task
-# itself, which is why those arms no longer exist.
+# There is deliberately no required-sections rule for instruction.md.
 #
-# The section rule below exists to stop a task shipping with an instruction that
-# forgets to say what is wanted. These prompts say it in one or two sentences,
-# so a "## Requirements" heading over them would put back exactly the shape they
-# were rewritten to remove. The exemption is a NAMED LIST rather than a "short
-# instructions are exempt" rule so that a task cannot fall out of the section
-# check by accident: dropping the sections from any task not written here still
-# fails CI.
+# There used to be one -- every instruction had to carry "## Requirements" and
+# "## Background" -- together with a named exemption list, REWRITTEN_PROMPT_TASKS,
+# for the tasks whose prompts had been rewritten out of the specification
+# register and into a request in a user's voice. That list said of itself that it
+# was expected "to disappear once it covers every task and the section rule can
+# go", and after the cut to 14 it did cover every task: the rule guarded nothing
+# and could not fail. That is worse than no rule, because it reads like a live
+# check -- an instruction.md was once replaced with a single character and the
+# lint still passed. Both went together.
 #
-# The list is expected to grow as the rest of the suite is rewritten, and to
-# disappear once it covers every task and the section rule can go.
-REWRITTEN_PROMPT_TASKS = frozenset({
-    "abandon_commits",
-    "absorb_changes",
-    "bookmark_left_behind",
-    "divergent_change",
-    "duplicate_range",
-    "edit_commit_message",
-    "git_fetch_remote",
-    "immutable_stack",
-    "operation_recovery",
-    "rebase_branch",
-    "restore_interactive",
-    "split_commit_interactive",
-    "squash_range",
-    "template_customize_log_output",
-    "track_untracked_file",
-    "undo_mistaken_rebase",
-    "workspace_add",
-    "workspace_update_stale",
-})
+# If a check on instruction content comes back, it has to be one that holds for a
+# one-sentence request, because that is the register the whole suite is written
+# in now. A heading requirement is not that check.
 
 # e.g. "jj-v0.38.0-x86_64-unknown-linux-musl.tar.gz" -> "0.38.0"
 JJ_VERSION_RE = re.compile(r"jj-v(\d+\.\d+\.\d+)")
@@ -223,23 +199,18 @@ def check_task_toml(task: str, task_dir: Path, findings: Findings) -> dict:
     return config
 
 
-def check_instruction(task: str, task_dir: Path, findings: Findings) -> str:
+def read_instruction(task_dir: Path) -> str:
+    """The prompt text, for the drift check against bootstrap/task.json.
+
+    Nothing about the instruction's own shape is asserted here -- see the note
+    above JJ_VERSION_RE on why the required-sections rule was retired. A missing
+    file is reported by check_required_files, and what the text has to match is
+    checked by check_task_json.
+    """
     path = task_dir / "instruction.md"
     if not path.is_file():
         return ""
-    text = path.read_text(encoding="utf-8")
-    if task in REWRITTEN_PROMPT_TASKS:
-        # The whole point of the rewritten tasks in REWRITTEN_PROMPT_TASKS is an
-        # instruction that is NOT shaped like a specification. A
-        # "## Requirements" heading over a one-sentence request would
-        # reintroduce the register they exist to remove, so the section
-        # requirement does not apply to them. Nothing else is relaxed.
-        return text
-    for section in REQUIRED_INSTRUCTION_SECTIONS:
-        # Match at line start so a mention in prose does not satisfy the check.
-        if not re.search(rf"^{re.escape(section)}\s*$", text, re.MULTILINE):
-            findings.fail(task, f"instruction.md is missing a '{section}' section")
-    return text
+    return path.read_text(encoding="utf-8")
 
 
 def check_task_json(task: str, task_dir: Path, instruction: str, findings: Findings) -> None:
@@ -711,7 +682,7 @@ def main() -> int:
             if isinstance(section, dict) and "network_mode" in section:
                 network_modes[phase][section["network_mode"]] += 1
 
-        text = check_instruction(task, task_dir, findings)
+        text = read_instruction(task_dir)
         check_task_json(task, task_dir, text, findings)
         if "## Implementation Guide" in text:
             instruction_sections[task] = "## Implementation Guide"

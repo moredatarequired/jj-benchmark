@@ -117,8 +117,12 @@ REQUIRED_INSTRUCTION_SECTIONS = ("## Requirements", "## Background")
 REWRITTEN_PROMPT_TASKS = frozenset({
     "abandon_commits",
     "absorb_changes",
+    "bookmark_left_behind",
+    "divergent_change",
+    "duplicate_range",
     "edit_commit_message",
     "git_fetch_remote",
+    "immutable_stack",
     "operation_recovery",
     "rebase_branch",
     "restore_interactive",

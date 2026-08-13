@@ -1,0 +1,187 @@
+"""Bootstrap check for the immutable_stack task.
+
+Asserts the starting state the request depends on: a four-commit stack above
+main, a repo-scoped `immutable_heads()` alias that covers main AND the first
+three commits of that stack, a reword target that jj actually refuses to
+rewrite, and -- the invariant that makes the second half of the prompt bite --
+no git remote, so deleting the alias would leave main protected by nothing.
+
+Each assertion corresponds to one of the seven fixture invariants written out in
+environment/Dockerfile.
+"""
+
+import os
+import shutil
+import subprocess
+
+PROJECT_DIR = "/home/user/checkout-api"
+OLD_DESCRIPTION = "fix nonce handling"
+TARGET_PATH = "src/api/nonce_store.py"
+
+STACK = (
+    "record retry attempts in the charge metrics",
+    OLD_DESCRIPTION,
+    "reuse the nonce on retried charges",
+    "note the nonce work in the changelog",
+)
+PROTECTED = (
+    "add the charge endpoint",
+    "route charges through handlers",
+    "issue a nonce with every charge",
+)
+
+
+def jj(*args):
+    return subprocess.run(
+        ["jj", *args], cwd=PROJECT_DIR, capture_output=True, text=True
+    )
+
+
+def lines(*args):
+    result = jj(*args)
+    assert result.returncode == 0, f"jj {' '.join(args)} failed: {result.stderr}"
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def test_jj_binary_available():
+    assert shutil.which("jj") is not None, "jj binary not found in PATH."
+
+
+def test_project_dir_exists():
+    assert os.path.isdir(PROJECT_DIR), f"{PROJECT_DIR} does not exist."
+
+
+def test_jj_repo_initialized():
+    result = jj("status")
+    assert result.returncode == 0, (
+        f"jj status failed, not a jj repository. Error: {result.stderr}"
+    )
+
+
+def test_history_shape():
+    found = lines("log", "-r", "::@ ~ root()", "--no-graph", "--reversed",
+                  "-T", '"[" ++ description.first_line() ++ "]\\n"')
+    assert found == [f"[{d}]" for d in PROTECTED + STACK], (
+        f"Unexpected starting history: {found}"
+    )
+
+
+def test_the_alias_is_the_over_broad_one():
+    """Invariant 1: `bookmarks()`, set repo-scoped, is what blocks the stack."""
+    result = jj("config", "get", 'revset-aliases."immutable_heads()"')
+    assert result.returncode == 0, (
+        f"no immutable_heads() alias is configured: {result.stderr}"
+    )
+    assert result.stdout.strip() == "bookmarks()", (
+        f"Expected the alias to be `bookmarks()`; it is "
+        f"{result.stdout.strip()!r}. tests/test_final_state.py never reads this "
+        "value -- it evaluates the alias -- but the task is only the task while "
+        "the starting alias is the over-broad one."
+    )
+    path = jj("config", "path", "--repo")
+    assert path.returncode == 0 and path.stdout.strip(), (
+        "there is no repo-scoped config path; the alias must be set with "
+        "`jj config set --repo`, which on jj 0.44 writes under "
+        "$HOME/.config/jj/repos/<20-hex>/ and NOT to .jj/repo/config.toml."
+    )
+    assert os.path.isfile(path.stdout.strip()), (
+        f"{path.stdout.strip()} does not exist, so the alias is not repo-scoped."
+    )
+
+
+def test_the_immutable_set_covers_main_and_most_of_the_stack():
+    """Invariant 1, evaluated: six commits protected, the working copy not."""
+    immutable = set(lines("log", "-r", "immutable() ~ root()", "--no-graph",
+                          "-T", 'description.first_line() ++ "\\n"'))
+    assert immutable == set(PROTECTED) | set(STACK[:3]), (
+        f"Expected main and the first three stack commits to be immutable; "
+        f"immutable() holds {sorted(immutable)}."
+    )
+    mutable = set(lines("log", "-r", "mutable()", "--no-graph",
+                        "-T", 'description.first_line() ++ "\\n"'))
+    assert mutable == {STACK[3]}, (
+        f"Expected only the working copy to be mutable; mutable() holds "
+        f"{sorted(mutable)}. `@` is deliberately outside the immutable set so "
+        "the agent is blocked on the stack rather than on everything."
+    )
+
+
+def test_the_reword_is_actually_refused():
+    """The refusal is the entry point, so it is checked rather than assumed."""
+    result = jj("describe", "-r", f'description(substring:"{OLD_DESCRIPTION}")',
+                "-m", "handle nonces on retried charges")
+    assert result.returncode != 0, (
+        "jj allowed the reword on the untouched image, so there is no obstacle "
+        "and no task."
+    )
+    assert "immutable" in result.stderr.lower(), (
+        f"the reword failed for a reason other than immutability: "
+        f"{result.stderr.strip()}"
+    )
+
+
+def test_there_is_no_git_remote():
+    """Invariant 3: deleting the alias must actually unprotect main.
+
+    jj's default `immutable_heads()` is `trunk() | tags() |
+    untracked_remote_bookmarks()`, and `trunk()` falls back to `root()` when
+    there is no origin. Add a remote to this fixture and "delete the alias"
+    becomes a correct answer, which removes half the discrimination.
+    """
+    remotes = lines("git", "remote", "list")
+    assert remotes == [], f"Expected no git remote; found {remotes}"
+
+
+def test_the_reword_target_owns_a_unique_path():
+    """Invariant 7: the content-based fallback names exactly one commit.
+
+    tests/test_final_state.py cannot fall back to
+    `description(substring:"fix nonce handling")` for this commit, because the
+    task is to change that description.
+    """
+    found = lines("log", "-r", f'files("{TARGET_PATH}")', "--no-graph", "-T",
+                  'description.first_line() ++ "\\n"')
+    assert found == [OLD_DESCRIPTION], (
+        f"Expected {TARGET_PATH} to be touched by exactly one commit, "
+        f"`{OLD_DESCRIPTION}`; it is touched by {found}."
+    )
+
+
+def test_the_bookmark_stopped_below_the_tip():
+    """Invariant 5: `retry-backoff` is on the third commit, not the fourth."""
+    found = lines("log", "-r", 'bookmarks(exact:"retry-backoff")', "--no-graph",
+                  "-T", 'description.first_line() ++ "\\n"')
+    assert found == [STACK[2]], (
+        f"Expected `retry-backoff` on `{STACK[2]}`; it is on {found}."
+    )
+
+
+def test_the_working_copy_is_described_and_not_empty():
+    """Invariant 6: the D11 guard.
+
+    jj 0.44 silently abandons an empty, undescribed `@` when you `jj edit`
+    elsewhere -- printing nothing at all -- and `jj edit` on the reword target
+    is a plausible first move.
+    """
+    found = lines("log", "-r", "@", "--no-graph", "-T",
+                  'description.first_line() ++ "|" ++ if(empty, "empty", "nonempty")'
+                  ' ++ "\\n"')
+    assert found == [f"{STACK[3]}|nonempty"], (
+        f"Expected `@` to be the described, non-empty stack tip; got {found}"
+    )
+
+
+def test_each_stack_commit_changes_its_own_paths():
+    expected = {
+        STACK[0]: {"src/api/metrics.py"},
+        STACK[1]: {"src/api/nonce.py", TARGET_PATH},
+        STACK[2]: {"config.toml", "src/client/retry.py"},
+        STACK[3]: {"CHANGELOG.md"},
+    }
+    for description, paths in expected.items():
+        changed = set(lines("diff", "-r", f'description(substring:"{description}")',
+                            "--name-only"))
+        assert changed == paths, (
+            f"`{description}` should change {sorted(paths)}; it changes "
+            f"{sorted(changed)}"
+        )

@@ -24,11 +24,28 @@ Dockerfile. Three things that run showed, and that the assertions are shaped by:
     `src/api/refunds.py` is gone from the tree and from disk. That is a
     consequence of the request, not an extra ask, and it is what separates a
     real rollback from one that only reverts the modified files;
-  * `jj new` snapshots before it does anything, so an agent that parks itself on
-    a fresh commit first does not strand the uncommitted work in an
-    empty-and-therefore-abandonable commit. The handover commit survives that
-    route with its content, which is why the graded revision is allowed to be a
-    descendant of it (see `graded_revision`).
+  * `jj new` snapshots before it does anything, so parking on a fresh commit
+    first does not strand the uncommitted work in an empty-and-therefore-
+    abandonable commit: it lands in the commit `jj new` leaves behind, and that
+    commit is still there afterwards. That is why the graded revision is
+    guarded positionally rather than pinned -- it may be a descendant of the
+    handover working copy (see `graded_revision`).
+
+    Parking is NOT free, though, and the same snapshot is why. `jj restore`
+    defaults to `--from @-`, and after `jj new` that is the snapshot of the
+    work that still needs rolling back, so the headline command restores the
+    working copy to the state it is already in. Measured on this image:
+
+        jj restore 'src ~ src/generated'                    -> 1.0
+        jj new; jj restore 'src ~ src/generated'            -> "Nothing
+                                                               changed." 0
+        jj new; jj restore --from '@--' 'src ~ src/generated' -> 1.0
+
+    All three are graded correctly by what follows -- the middle one rolled
+    nothing back and is scored as such. It is recorded here so nobody reads the
+    positional guard as a promise that `jj new` costs nothing; what the guard
+    buys is that an agent which parks AND re-aims is graded exactly like one
+    that never parked.
 
 WHAT IS GRADED, AND FROM WHERE
 ==============================
@@ -37,8 +54,9 @@ The working copy at `@`, with one positional guard rather than a positional
 pin: the bootstrap's handover working copy must still be `@` or an ancestor of
 `@`. That is the `restore_interactive` idiom (`({handover}) & ::@`), and it is
 there for the same reason -- an agent that ran `jj new` at some point must not
-lose marks for it, while a stack fabricated from `root()` still cannot be what
-gets graded.
+lose marks for where that left `@`, while a stack fabricated from `root()` still
+cannot be what gets graded. Marks are lost for parking without re-aiming the
+restore, but by the content assertions, not by the position guard.
 
 Content is compared against the base commit's own bytes AND against literal
 constants. Both, deliberately: comparing only against the base commit would

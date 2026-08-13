@@ -58,10 +58,11 @@ direction and cancels out, which is why (2) passed and (3) did not.
 
 Scoring (3) zero would be the `restore_interactive` / `track_untracked_file`
 mistake again in a new costume -- failing a correct answer for a bookkeeping
-habit. So the answer is compared against TWO reference sets and passes if it
-matches either. Both are revsets evaluated in this repository at verification
-time; neither is a constant, and the difference between them is exactly the
-commits the agent created:
+habit. So the answer is compared against TWO reference sets, and each of the
+three assertions below passes if it holds against either of them. Both are
+revsets evaluated in this repository at verification time; neither is a
+constant, and the difference between them is exactly the commits the agent
+created:
 
   * LIVE     `heads(main..)` -- the tips as they stand now.
   * HANDOVER `heads((main..) & <the commits the bootstrap handed over>)` -- the
@@ -76,6 +77,51 @@ than the verifier was without it.
 Short ids are what `change_id.short()` prints and what an agent will naturally
 write, so every line is resolved through `change_id(<token>)` in the repository
 rather than compared as text; a full 32-character id is accepted identically.
+
+WHAT PARTIAL CREDIT IS SHAPED LIKE, AND WHY IT IS SHAPED THAT WAY
+=================================================================
+
+tests/test.sh scores a failed run as (scored tests passed) / (scored tests),
+where "scored" excludes the names in tests/vacuity_floor.json. So the SHAPE of
+this file is the reward curve, and it has to be chosen rather than fallen into.
+
+The first version of this file had five tests, of which one graded the answer
+and two graded the file's format -- existence and one-id-per-line. Both of those
+hold for ANY well-formed file whatever it says, so they were two free marks:
+measured, a file naming ONE of the four tips scored 0.75, while
+`bookmarks()` and `heads(all())` -- coherent wrong answers, each three or four
+tips right -- scored 0.50. A barely-right answer outscored a nearly-right one,
+which is backwards.
+
+So the format checks are not tests any more. They are preconditions of reading
+the answer at all (`well_formed_answer`), and every scored assertion below is
+about the CONTENT of the answer. The answer is then graded on the three
+independent ways this fixture makes an answer wrong -- the same three the
+Dockerfile was built around:
+
+  * nothing that is not an unmerged tip is listed (`main` itself, an
+    already-merged tip, anything else);
+  * every unmerged tip that CARRIES A BOOKMARK is listed;
+  * the unmerged tip that carries NO BOOKMARK is listed.
+
+The last two are the two halves of "nothing missing", split where this task's
+capability actually lives: "tips" read as "bookmarks" gets the first and misses
+the second, and that is the whole reason the spike exists in the fixture. That
+split is what makes credit track how much of the answer is right instead of how
+well-formed the file is. Measured on this image (jj 0.44.0):
+
+    untouched                                             0
+    all four tips                                         1.0
+    the three bookmarked tips, spike missed               0.666667
+    spike kept, oauth-refresh missed                      0.666667
+    one tip alone                                         0.333333
+    `bookmarks()`                                         0.333333
+    `heads(all())`                                        0.666667
+
+Listing one tip no longer beats a coherent wrong answer, three-of-four beats
+one-of-four, and `heads(all())` -- four right and one extra -- lands above
+`bookmarks()`, which is three right, one extra and one missing. Nothing here
+pays for a well-formed file.
 """
 
 import os
@@ -239,8 +285,21 @@ def answer_lines():
     return text, [line for line in text.splitlines() if line.strip()]
 
 
-def test_unmerged_txt_was_written():
-    """The deliverable exists and is not empty."""
+def well_formed_answer():
+    """The answer as a set of full change ids -- the precondition of every test.
+
+    Deliberately NOT a test of its own. Existence, one-id-per-line and
+    no-duplicates hold for any well-formed file whatever it claims, so scoring
+    them as separate tests paid an agent for the shape of its output rather than
+    for its answer (see the module docstring). They are checked here instead, so
+    that a file nobody can read costs everything below it rather than earning
+    two marks.
+
+    Resolution rather than text comparison is the point of the last step: a
+    solve that prints 8-character ids, one that prints the full 32, and one that
+    pastes them in by hand are the same answer and are graded the same.
+    """
+    snapshot_working_copy()
     text, lines = answer_lines()
     assert lines, f"{ANSWER_FILE} is empty."
     assert "<Error:" not in text, (
@@ -249,10 +308,6 @@ def test_unmerged_txt_was_written():
         "list of change ids."
     )
 
-
-def test_each_line_holds_one_change_id():
-    """One id per line, as asked -- no graph glyphs, no descriptions, no dupes."""
-    _, lines = answer_lines()
     bad = [line for line in lines if not CHANGE_ID_RE.match(line.strip())]
     assert not bad, (
         f"{ANSWER_FILE} has {len(bad)} line(s) that are not a single change id: "
@@ -264,22 +319,8 @@ def test_each_line_holds_one_change_id():
         f"{ANSWER_FILE} lists the same id more than once: {duplicates}"
     )
 
-
-def resolved_answer():
-    """Each line of the file resolved to a full change id in the repository.
-
-    Resolution rather than text comparison is the whole point: a solve that
-    prints 8-character ids, one that prints the full 32, and one that pastes
-    them in by hand are the same answer and are graded the same.
-    """
-    snapshot_working_copy()
-    _, lines = answer_lines()
     resolved = set()
-    for line in lines:
-        token = line.strip()
-        assert CHANGE_ID_RE.match(token), (
-            f"{token!r} in {ANSWER_FILE} is not a change id."
-        )
+    for token in tokens:
         found = change_ids(f"change_id({token})")
         assert len(found) == 1, (
             f"{token!r} in {ANSWER_FILE} does not name exactly one visible "
@@ -287,6 +328,15 @@ def resolved_answer():
         )
         resolved.add(found[0])
     return resolved
+
+
+def bookmarked_commits():
+    """Every commit carrying a bookmark, whatever its name.
+
+    Evaluated, never listed: BOOKMARKS below is what the anti-pruning test holds
+    the fixture to, and using it here would grade the answer against a constant.
+    """
+    return set(change_ids("bookmarks()"))
 
 
 def describe(cids):
@@ -299,52 +349,112 @@ def describe(cids):
     return "; ".join(line for line in out.splitlines() if line)
 
 
-def test_the_listed_ids_are_exactly_the_unmerged_tips():
-    """Set equality against the revset, evaluated here and now."""
+def test_no_commit_outside_the_unmerged_tips_is_listed():
+    """Nothing in the file that is not a tip outside main -- the "no extras" half.
+
+    This is also where the two named wrong answers are failed by name, because
+    both of them fail HERE first, on something they added rather than on
+    something they left out. `heads(all())` returns `main` itself, which is a
+    head but is not a tip that is not yet part of main. `bookmarks()` returns
+    the two bookmarks that are already ancestors of main (`retry-backoff` and
+    `release/2.4`). Each is a mistake about a different word in the request, and
+    each puts a commit in the answer that the request excludes.
+
+    Set INCLUSION rather than equality, so that the two halves of the answer are
+    scored independently: an incomplete answer whose every entry is a genuine
+    unmerged tip passes this and fails the two below.
+    """
+    actual = well_formed_answer()
     readings = reference_tips()
-    actual = resolved_answer()
-    if any(actual == expected for _, expected in readings):
+    if any(actual <= expected for _, expected in readings):
         return
-    report = []
-    for label, expected in readings:
-        report.append(
-            f"  against the {label} reading:\n"
-            f"    missing: {describe(expected - actual)}\n"
-            f"    extra:   {describe(actual - expected)}"
+
+    main = resolve_one(graded(MAIN), "main")
+    merged = resolve_one(graded(MERGED_TIP), MERGED_TIP)
+    named = []
+    if main in actual:
+        named.append(
+            "  `main` itself is listed. It is a head, but it is not a tip that "
+            "is not yet part of main."
         )
+    if merged in actual:
+        named.append(
+            "  the `retry-backoff` / `release/2.4` tip is listed; it was merged "
+            "into main before the task started."
+        )
+    inside = {c for c in actual if c in set(change_ids(f"::change_id({main})"))}
+    if inside - {main, merged}:
+        named.append(
+            "  these are already part of main: %s" % describe(inside - {main, merged})
+        )
+    report = [
+        f"  against the {label} reading, extra: {describe(actual - expected)}"
+        for label, expected in readings
+    ]
     raise AssertionError(
-        f"{ANSWER_FILE} does not list the tips that are outside main.\n"
-        + "\n".join(report)
+        f"{ANSWER_FILE} lists commits that are not tips outside main.\n"
+        + "\n".join(named + report)
         + "\nEvery expected set is recomputed in this repository at "
         "verification time; none of them is a constant in the verifier."
     )
 
 
-def test_nothing_already_in_main_is_listed():
-    """The specific wrong answers, failed by name.
+def test_every_bookmarked_unmerged_tip_is_listed():
+    """The first half of "nothing missing": the tips a bookmark points at.
 
-    Two cheap revsets give two different wrong answers here, and each is a
-    mistake about a different word in the request. `bookmarks()` returns the two
-    bookmarks that are already ancestors of main (`retry-backoff` and
-    `release/2.4`) and misses the unbookmarked spike entirely -- that is
-    "tips" read as "bookmarks". `heads(all())` returns `main` itself, which is a
-    head -- that is "not yet part of main" left out altogether.
+    Three of the four are bookmarked (`rate-limit`, `oauth-refresh`,
+    `idempotency`), and which commits carry a bookmark is read out of the
+    repository, not out of BOOKMARKS -- so this stays a question the repository
+    answers rather than a constant.
     """
-    actual = resolved_answer()
-    main = resolve_one(graded(MAIN), "main")
-    merged = resolve_one(graded(MERGED_TIP), MERGED_TIP)
-    inside = {c for c in actual if c in set(change_ids(f"::change_id({main})"))}
-    assert not inside, (
-        f"{ANSWER_FILE} lists commits that are already part of main: "
-        f"{describe(inside)}"
+    actual = well_formed_answer()
+    marked = bookmarked_commits()
+    readings = reference_tips()
+    live = readings[0][1] & marked
+    assert live, (
+        "the fixture no longer has a single bookmarked tip outside main, so "
+        "this test can no longer say anything. Fix the fixture or this file."
     )
-    assert main not in actual, (
-        "`main` itself is listed. It is a head, but it is not a tip that is "
-        "not yet part of main."
+    if any((expected & marked) <= actual for _, expected in readings):
+        return
+    raise AssertionError(
+        f"{ANSWER_FILE} is missing bookmarked tip(s) that are not yet part of "
+        "main.\n"
+        + "\n".join(
+            f"  against the {label} reading, missing: "
+            f"{describe((expected & marked) - actual)}"
+            for label, expected in readings
+        )
     )
-    assert merged not in actual, (
-        "the `retry-backoff` / `release/2.4` tip is listed; it was merged into "
-        "main before the task started."
+
+
+def test_the_unbookmarked_tip_is_listed():
+    """The second half of "nothing missing", and the one the task turns on.
+
+    The settlement spike is a head outside main with no bookmark on it. An agent
+    that reads "tips" as "the bookmarks" produces an answer that can pass the
+    test above and still fail this one -- which is the distinction the fixture
+    was built to create, so it is scored on its own rather than folded into a
+    single all-or-nothing set comparison.
+    """
+    actual = well_formed_answer()
+    marked = bookmarked_commits()
+    readings = reference_tips()
+    live = readings[0][1] - marked
+    assert live, (
+        "the fixture no longer has an unbookmarked tip outside main, so this "
+        "test can no longer say anything. Fix the fixture or this file."
+    )
+    if any((expected - marked) <= actual for _, expected in readings):
+        return
+    raise AssertionError(
+        f"{ANSWER_FILE} is missing tip(s) outside main that carry no bookmark. "
+        "A tip is a head of the history, not a bookmark.\n"
+        + "\n".join(
+            f"  against the {label} reading, missing: "
+            f"{describe((expected - marked) - actual)}"
+            for label, expected in readings
+        )
     )
 
 

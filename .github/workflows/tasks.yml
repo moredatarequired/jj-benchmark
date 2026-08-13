@@ -70,27 +70,11 @@ jobs:
           set -euo pipefail
 
           all_tasks() {
-            # Any directory under tasks/ is a task, EXCEPT the prompt-variant
-            # arms (tasks/<base>_terse/). Their container jobs are provably
-            # redundant: scripts/lint_tasks.py check_variant_identity() fails
-            # the build unless a variant is byte-identical to its base task
-            # everywhere except instruction.md, so the image it would build,
-            # the bootstrap/test_initial_state.py it would run and the
-            # tests/test.sh + tests/test_final_state.py + tests/vacuity_floor.json
-            # it would vacuity-check are the same files the base task's job
-            # already builds and runs. Neither of those two steps reads
-            # instruction.md at all.
-            #
-            # This only skips the SWEEP paths (schedule / workflow_dispatch).
-            # A pull request still selects the tasks it touched by directory
-            # name below, so a PR that edits a variant runs that variant --
-            # which is what catches a variant whose tests/ was edited without
-            # its base task's, before the identity lint has to.
-            # sed rather than `grep -v`: grep exits 1 when it prints nothing,
-            # and `set -o pipefail` would turn that into a silent, total
-            # selection failure.
-            find tasks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
-              | sed '/_terse$/d' | sort
+            # Every directory under tasks/ is a task. The prompt-variant arms
+            # (tasks/<base>_terse/) used to be filtered out here as provably
+            # redundant container jobs; they were deleted once their register
+            # was adopted by the base tasks, so there is nothing left to skip.
+            find tasks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
           }
 
           if [ "$EVENT" = "pull_request" ]; then

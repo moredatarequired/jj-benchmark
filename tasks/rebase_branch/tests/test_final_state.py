@@ -184,17 +184,27 @@ def test_feature_branch_rebased_onto_main():
 
 
 def test_conflict_resolved_content():
-    """Priority 1: Use jj CLI to check the content of data.txt in feature-branch."""
-    expected_content = "Line from main\nLine from feature\n"
+    """Priority 1: Use jj CLI to check the content of data.txt in feature-branch.
+
+    Compared as LINES, not as bytes. This was `result.stdout == "Line from
+    main\\nLine from feature\\n"`, which fails a resolution written without a
+    trailing newline -- `printf 'Line from main\\nLine from feature'`, or an
+    editor that does not add one. That is a POSIX line-ending detail, not the
+    conflict resolution the task is about, and no phrasing of the request makes
+    it discoverable. splitlines() keeps everything that is being measured: both
+    lines present, in that order, and nothing else in the file.
+    """
+    expected_lines = ["Line from main", "Line from feature"]
 
     # Read at the bootstrap's own `feature commit 2`, which is what
     # `feature-branch` has to point at, rather than at the bookmark itself.
     head = anchored(FEATURE_2) or "feature-branch"
     result = _jj("file", "show", "data.txt", "-r", head)
     assert result.returncode == 0, f"'jj file show' failed: {result.stderr}"
-    assert result.stdout == expected_content, (
+    assert result.stdout.splitlines() == expected_lines, (
         f"Expected data.txt at the head of the rebased stack ({head[:12]}) to "
-        f"contain exactly '{expected_content}', got '{result.stdout}'"
+        f"contain exactly the lines {expected_lines}, got "
+        f"{result.stdout.splitlines()}"
     )
 
 

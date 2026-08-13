@@ -63,16 +63,16 @@ REQUIRED_FILES = (
     "tests/vacuity_floor.json",
 )
 
-# Shared verifier infrastructure: copied verbatim into all 53 tasks, because
+# Shared verifier infrastructure: copied verbatim into every task, because
 # harbor mounts only one task's tests/ directory at /tests and there is nowhere
 # else for a shared module to live. Divergence between copies is always a bug --
-# it means one task is being verified by different code from the other 52.
+# it means one task is being verified by different code from all the others.
 SHARED_TEST_FILES = ("tests/test.sh", "tests/anchor.py", "tests/conftest.py")
 
 # tests/anchor_exemptions.json is OPTIONAL and per-task, so it is not in
 # REQUIRED_FILES and not in SHARED_TEST_FILES. Absent means "nothing this task
 # asks for removes a bootstrap commit", which is true of most tasks, and keeping
-# it absent rather than shipping 53 empty files is what makes the set of tasks
+# it absent rather than shipping an empty file per task is what makes the set of tasks
 # that DO claim an exemption reviewable at a glance. Unlike
 # tests/bootstrap_anchor.json it IS committed: it describes the task, not one
 # image build. The schema is enforced below; whether each entry actually names
@@ -99,11 +99,43 @@ NETWORK_MODE_PHASES = ("environment", "agent", "verifier")
 # Sections instructions must carry. Agents are prompted against these.
 REQUIRED_INSTRUCTION_SECTIONS = ("## Requirements", "## Background")
 
+# Tasks whose instruction.md has been rewritten out of the specification
+# register and into a request in a user's voice -- the register the retired
+# tasks/<base>_terse/ arms were built to try out, now adopted as the task
+# itself, which is why those arms no longer exist.
+#
+# The section rule below exists to stop a task shipping with an instruction that
+# forgets to say what is wanted. These prompts say it in one or two sentences,
+# so a "## Requirements" heading over them would put back exactly the shape they
+# were rewritten to remove. The exemption is a NAMED LIST rather than a "short
+# instructions are exempt" rule so that a task cannot fall out of the section
+# check by accident: dropping the sections from any task not written here still
+# fails CI.
+#
+# The list is expected to grow as the rest of the suite is rewritten, and to
+# disappear once it covers every task and the section rule can go.
+REWRITTEN_PROMPT_TASKS = frozenset({
+    "abandon_commits",
+    "absorb_changes",
+    "edit_commit_message",
+    "git_fetch_remote",
+    "operation_recovery",
+    "rebase_branch",
+    "restore_interactive",
+    "split_commit_interactive",
+    "squash_range",
+    "template_customize_log_output",
+    "track_untracked_file",
+    "undo_mistaken_rebase",
+    "workspace_add",
+    "workspace_update_stale",
+})
+
 # e.g. "jj-v0.38.0-x86_64-unknown-linux-musl.tar.gz" -> "0.38.0"
 JJ_VERSION_RE = re.compile(r"jj-v(\d+\.\d+\.\d+)")
 
 # tests/test.sh runs `python3 -m pytest --ctrf ...` and installs nothing, so
-# every image has to carry these already. The pins live in 53 Dockerfiles;
+# every image has to carry these already. The pins live in one Dockerfile per task;
 # this check is what stops one of them being bumped or dropped on its own and
 # only surfacing as a task that mysteriously errors mid-sweep.
 VERIFIER_DEPS = ("pytest==8.4.1", "pytest-json-ctrf==0.3.5")
@@ -192,6 +224,13 @@ def check_instruction(task: str, task_dir: Path, findings: Findings) -> str:
     if not path.is_file():
         return ""
     text = path.read_text(encoding="utf-8")
+    if task in REWRITTEN_PROMPT_TASKS:
+        # The whole point of the rewritten tasks in REWRITTEN_PROMPT_TASKS is an
+        # instruction that is NOT shaped like a specification. A
+        # "## Requirements" heading over a one-sentence request would
+        # reintroduce the register they exist to remove, so the section
+        # requirement does not apply to them. Nothing else is relaxed.
+        return text
     for section in REQUIRED_INSTRUCTION_SECTIONS:
         # Match at line start so a mention in prose does not satisfy the check.
         if not re.search(rf"^{re.escape(section)}\s*$", text, re.MULTILINE):
@@ -410,8 +449,9 @@ def check_test_sh_reads_floor(task: str, task_dir: Path, findings: Findings) -> 
     """The shared test.sh is what applies the floor; it must still read it.
 
     Without this, reverting test.sh to the old 0/1 script (or to a naive
-    passed/tests fraction) leaves 53 floor files in the tree that nothing
-    consults, and the lint stays green because all 53 copies still agree.
+    passed/tests fraction) leaves a floor file per task in the tree that
+    nothing consults, and the lint stays green because all the copies still
+    agree.
     """
     path = task_dir / "tests/test.sh"
     if not path.is_file():
@@ -427,9 +467,9 @@ def check_test_sh_reads_floor(task: str, task_dir: Path, findings: Findings) -> 
 
 
 def check_conftest_applies_anchor(task: str, task_dir: Path, findings: Findings) -> None:
-    """tests/conftest.py is what makes the anchor apply without 53 edits.
+    """tests/conftest.py is what makes the anchor apply without a per-task edit.
 
-    Same argument as check_test_sh_reads_floor: 53 byte-identical copies of a
+    Same argument as check_test_sh_reads_floor: byte-identical copies of a
     conftest.py that no longer runs the check would leave the lint green while
     every verifier silently stopped detecting a rebuilt repository. So assert the
     two properties that make it work at all -- it calls the assertion, and it does

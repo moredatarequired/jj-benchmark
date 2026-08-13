@@ -1,14 +1,23 @@
 """Verifier for the squash_range task.
 
-The task asks for two `fix` commits to be combined into `feat: initial
-structure` *in a single operation* -- the skill under test is naming a range of
-source commits with a revset instead of squashing them one at a time. The end
-state of one range squash and of two sequential squashes is byte-for-byte
-identical, so the end state alone cannot tell them apart. What does tell them
-apart is jj's operation log: this file replays the visibility of the two source
-commits across every operation and requires that, at the moment they finally
-stopped being visible, they stopped *together*, in one operation, and that the
-same operation is the one that moved their content into the target.
+The task asks for two `fix` commits to be folded into their parent, `feat:
+initial structure`. HOW that happens is not graded. One range squash and two
+sequential squashes reach a byte-for-byte identical end state, and this file no
+longer tries to tell them apart: it used to, via a scored test requiring both
+source commits to have stopped being visible in the SAME operation, and that
+test has been removed. It graded method rather than outcome -- an agent that
+squashed twice produced exactly the history the request asks for and was marked
+down for the route it took there.
+
+What survives from the operation-log replay is one assertion, and it is a
+FABRICATION DETECTOR rather than a method check: the operation in which the fix
+commits finally stopped being visible must also be the operation in which their
+content arrived in the target. Without it, hand-editing structure.txt inside the
+target and then `jj abandon`-ing both fixes -- no squash anywhere -- produces a
+byte-perfect end state and scores full marks. That check cannot fail an honest
+solve however many operations it took: one range squash, two sequential squashes
+and a squash-undo-retry all put the content and the disappearance in the same
+step, because that step IS a squash.
 
 Three deliberate choices:
 
@@ -30,15 +39,24 @@ Three deliberate choices:
     construction -- the derivation from this repository's operation log is still
     the fallback, and it says out loud that no identity claim was made.
 
-  * The check looks only at the *last* transition in which the fix commits
-    disappeared, not at the total number of operations. An agent that tries two
-    sequential squashes, undoes them, and then does it properly in one
-    operation has demonstrated the skill and passes -- while an agent that
-    simply squashes twice and stops fails. Counting operations instead would
-    have been both harsher (it would fail the undo/retry path) and weaker (the
-    working-copy snapshot operation that jj adds on an agent's very first
-    command, and any further snapshot an agent's file edits produce, make the
-    absolute count unpredictable).
+  * The replay looks only at the *last* transition in which the fix commits
+    disappeared, not at the total number of operations, and never at how many
+    operations it took. An agent that squashes, undoes, and squashes again is
+    graded on the step that stuck. Counting operations was never possible
+    anyway: the working-copy snapshot jj adds on an agent's very first command,
+    and any further snapshot its file edits produce, make the absolute count
+    unpredictable.
+
+NOTHING IN THIS FILE GRADES METHOD
+==================================
+
+Every assertion here is about the end state, except the fabrication detector
+described above -- and that one is satisfied by every honest route to the end
+state, so there is no requirement the agent has to be told beyond "fold the two
+fixes into their parent". That is deliberate and it is the point of the change
+that removed test_fixes_were_combined_in_a_single_operation: a verifier that can
+fail a correct history because of the sequence of commands that produced it is
+measuring conformance to an unwritten rubric, not the task.
 
 Every jj call passes --ignore-working-copy so that verification itself never
 writes an operation to the repository it is inspecting.
@@ -72,9 +90,6 @@ NO_ANCHOR = ""
 # carrying both fixes ends up with the second fix's content.
 SQUASHED_FILE = "structure.txt"
 SQUASHED_CONTENT = "logic fixed\n"
-
-# root() plus the three commits the instruction says must remain.
-EXPECTED_COMMIT_COUNT = 4
 
 
 def jj(*args, check=True):
@@ -203,28 +218,72 @@ def latest():
     return operation_ids()[0]
 
 
+@lru_cache(maxsize=None)
+def root_change_id():
+    """The change id of jj's virtual root commit.
+
+    It is visible in `all()` and belongs to no bootstrap description, so it has
+    to be named explicitly wherever the visible set is compared against the
+    commits the task is about.
+    """
+    return jj("log", "-r", "root()", "--no-graph",
+              "-T", 'change_id ++ "\\n"').strip()
+
+
+def is_empty(change_id):
+    """True when the commit records no change against its parent.
+
+    `empty` is a boolean keyword on every commit in jj's template language, so
+    this asks the same question `jj diff --name-only` would without parsing a
+    file list.
+    """
+    out = jj("log", "-r", change_id, "--no-graph", "-T", 'empty ++ "\\n"')
+    return out.strip() == "true"
+
+
 # --------------------------------------------------------------------------
 # End state
 # --------------------------------------------------------------------------
 
 def test_only_the_expected_commits_remain():
-    """"exactly four commits must remain in the log", and WHICH four.
+    """The three bootstrap survivors are still here, and nothing else carries work.
 
-    The count alone would accept four fabricated commits; naming the three
-    non-root survivors by their bootstrap change ids does not.
+    This was `len(visible) == 4` -- the instruction's own "afterwards exactly
+    four commits must remain". A count is not what the task is about, and it
+    rejected an end state that is correct on the merits: an agent that parks
+    itself off the stack first (`jj new -r <descendant>`, the git-shaped habit
+    of getting off the commit you are about to rewrite) leaves a fifth, empty
+    commit and every real property of the squash intact. Nothing in the request
+    speaks against that, so failing it was a false failure -- and the count
+    never carried the identity claim anyway, which comes from the change ids.
+
+    What is asserted instead: the three commits that must survive are the
+    BOOTSTRAP's own commits, and any additional visible commit must be EMPTY. A
+    scratch commit costs nothing; a commit carrying content means work ended up
+    somewhere other than the target, which is a reshaped history rather than a
+    squash. Together with test_fix_commits_are_no_longer_visible (the two
+    sources are gone, by change id) and test_topology_preserved (the survivors
+    still sit on each other), this states everything the count did except the
+    number.
     """
     ids = bootstrap_change_ids()
     visible = visible_commits(latest())
-    assert len(visible) == EXPECTED_COMMIT_COUNT, (
-        f"Expected {EXPECTED_COMMIT_COUNT} commits to remain (the root commit, "
-        f"{', '.join(repr(d) for d in ROOT_AND)}), but found {len(visible)}: "
-        f"{sorted(visible.values())}. The commits were not properly squashed."
-    )
     absent = [d for d in ROOT_AND if ids[d] not in visible]
     assert not absent, (
         "The commit(s) the bootstrap created and described "
-        f"{absent} are not among the four that remain, so the four visible "
-        "commits are not the ones this task started from."
+        f"{absent} are no longer visible, so what remains is not the history "
+        "this task started from."
+    )
+    expected = {ids[d] for d in ROOT_AND} | {root_change_id()}
+    extra = sorted(set(visible) - expected)
+    carrying = [c for c in extra if not is_empty(c)]
+    assert not carrying, (
+        "Commit(s) other than the root commit, "
+        f"{', '.join(repr(d) for d in ROOT_AND)} are still visible and still "
+        "carry changes: "
+        f"{[(c[:12], visible[c]) for c in carrying]}. The fixes have to be "
+        "folded INTO the target commit, so no other commit may be left holding "
+        "their content."
     )
 
 
@@ -319,29 +378,67 @@ def test_topology_preserved():
 
 
 def test_feature_bookmark_still_points_at_the_target():
-    """Bookmarks follow rewritten commits, so a squash leaves `feature` in place."""
+    """The `feature` bookmark was not carried forward onto new history.
+
+    Bookmarks follow rewritten commits, so a squash leaves `feature` exactly
+    where it was. It used to be asserted that way -- equality with the target --
+    which is the one assertion in this file that no bullet of the request ever
+    licensed: the instruction does not mention a bookmark at all. It is floored,
+    so it earns nothing, and per tests/test.sh a failing floored test still caps
+    the trial below a full mark; an agent penalised here would be penalised for
+    a requirement it was never given.
+
+    "It is floored" is a MEASUREMENT, and this repository has already been wrong
+    about it once, in a way worth writing down because the same mistake silently
+    inflates any task's score. `tests/vacuity_floor.json` briefly read 8 tests /
+    0 floor, which would have made this test scored. That number came from a
+    floor run with a STALE `tests/bootstrap_anchor.json` sitting in the tree: an
+    anchor written for an earlier build of the image fails the session-scoped
+    fixture in tests/conftest.py, so every test in this file ERRORS before its
+    body runs, and "no test passed on the untouched image" is then recorded as a
+    floor of zero for the whole task. Re-measured with no stale anchor present,
+    the floor is 3 -- this test, test_target_commit_survived and
+    test_target_commit_still_described_as_the_target -- which is what CI
+    measures too, since CI always builds cold and has no anchor at all. Remove
+    tasks/*/tests/bootstrap_anchor.json before running scripts/vacuity_floor.py.
+
+    Relaxed to `feature` pointing at the target OR at an ancestor of it. That
+    still rejects the failure this is here for -- a bookmark dragged forward
+    onto a fabricated or reshaped head -- while tolerating a bookmark left
+    behind, which nothing about the task asks the agent to think about.
+    """
     ids = bootstrap_change_ids()
-    out = jj("log", "-r", "feature", "--no-graph", "-T", 'change_id ++ "\\n"')
-    assert out.strip() == ids[TARGET], (
-        f"The `feature` bookmark points at {out.strip()[:12]!r}, expected the "
-        f"commit described {TARGET!r} ({ids[TARGET][:12]})."
+    out = jj("log", "-r", f"feature & ::({ids[TARGET]})", "--no-graph",
+             "-T", 'change_id ++ "\\n"')
+    assert out.strip(), (
+        f"The `feature` bookmark points at "
+        f"{jj('log', '-r', 'feature', '--no-graph', '-T', 'change_id').strip()[:12]!r}"
+        f", which is neither the commit described {TARGET!r} "
+        f"({ids[TARGET][:12]}) nor an ancestor of it."
     )
 
 
 # --------------------------------------------------------------------------
-# The single-operation requirement
+# Anti-fabrication: the fixes' content moved when the fixes went away
 # --------------------------------------------------------------------------
 
-def test_fixes_were_combined_in_a_single_operation():
-    """Both source commits stopped being visible in the *same* operation.
+def test_the_operation_that_removed_the_fixes_is_what_moved_the_content():
+    """The operation that removed the fixes is the one that carried their changes.
 
-    Walking the operation log from newest to oldest, find the most recent
-    operation at which either fix commit was still visible. The step from that
-    operation to the next one is when the fixes finally went away, and the
-    instruction requires that step to have taken both of them at once.
+    Without this, an agent could edit structure.txt by hand in the target commit
+    and then make both fix commits vanish with `jj abandon`: commits gone,
+    correct final content, no squash anywhere. Requiring the content to change
+    *in the same operation that removed them* rules that out, because the hand
+    edit lands in an earlier operation and leaves the target already holding the
+    final content when the fixes disappear.
 
-    Two sequential squashes fail here: the last such step takes only the second
-    fix, because the first one had already gone in an earlier operation.
+    This is the only assertion in this file that reads the operation log, and it
+    is not a method check. It passes for one range squash (both fixes vanish in
+    the squash that carries their content), for two sequential squashes (the
+    last one removes the second fix and carries the content that ends up in the
+    target), and for a squash-undo-retry (only the step that stuck is examined).
+    What it fails is a history in which the content did not travel with the
+    commits -- which is not a way of doing the task, it is a way of faking it.
     """
     ids = bootstrap_change_ids()
     fix_ids = {ids[d] for d in FIXES}
@@ -357,44 +454,7 @@ def test_fixes_were_combined_in_a_single_operation():
     )
     assert index != 0, (
         "The fix commits are still visible at the latest operation: they were "
-        "never combined into the target commit."
-    )
-
-    before, after = ops[index], ops[index - 1]
-    remaining = fix_ids & set(visible_commits(before))
-    assert remaining == fix_ids, (
-        "The fix commits were not combined in a single operation. At the "
-        f"operation before the last one that removed them ({before[:12]}), only "
-        f"{len(remaining)} of the 2 fix commits was still present, so the other "
-        "one had already been squashed away by an earlier operation. Both "
-        "source commits must be named by one operation."
-    )
-    assert not (fix_ids & set(visible_commits(after))), (
-        f"Internal check: operation {after[:12]} was expected to be the one "
-        "where the fix commits stopped being visible."
-    )
-
-
-def test_the_single_operation_is_what_moved_the_content():
-    """The operation that removed the fixes is the one that carried their changes.
-
-    Without this, an agent could edit structure.txt by hand in the target commit
-    and then make both fix commits vanish in one `jj abandon`: two commits gone
-    in one operation, correct final content, no squash. Requiring the content to
-    change *in that same operation* rules that out, because the hand edit lands
-    in an earlier operation.
-    """
-    ids = bootstrap_change_ids()
-    fix_ids = {ids[d] for d in FIXES}
-    ops = operation_ids()
-
-    index = next(
-        (i for i, op in enumerate(ops) if fix_ids & set(visible_commits(op))),
-        None,
-    )
-    assert index is not None and index != 0, (
-        "The fix commits were never combined away; see "
-        "test_fixes_were_combined_in_a_single_operation."
+        "never folded into the target commit."
     )
 
     before, after = ops[index], ops[index - 1]

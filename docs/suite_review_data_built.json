@@ -1,0 +1,201 @@
+{
+  "note": "Judgments about the built tasks, for docs/build_suite_review.py. Deliberately holds NO prompt text and NO test counts: the builder reads prompts from tasks/<name>/instruction.md, counts and floored names from tasks/<name>/tests/vacuity_floor.json, and the anchor-exemption flag from the presence of tasks/<name>/tests/anchor_exemptions.json, all at build time. That is what kept this file wrong when squash_range's floor was re-measured (af369f13) and when the fourteen prompts were rewritten (4c2a6de0). The seven `tier: demoted` entries are now the seven tasks the cut DELETED (the smoke tier they were parked in was dropped with them), so the builder does not read a task directory for those -- there is none; their `grading` and `hole` text is a record of what was removed, recoverable in full at commit 73854f0b. `grading` is a summary of tests/test_final_state.py, re-read against the verifier on 2026-08-13. `separated` means the task separated the three model tiers in the 795-trial baseline; `provisional` means it is held for capability coverage alone and leaves when its replacement lands.",
+  "tasks": [
+    {
+      "name": "abandon_commits",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": true,
+      "provisional": false,
+      "grading": "Four assertions on repository state. a.txt and d.txt are on disk and b.txt and c.txt are not, and the anchored handover working copy must track exactly those two files, so the abandons really took their files with them. `experiment` must resolve to the change id the bootstrap gave `commit A`, `draft` must no longer resolve at all, and the bootstrap's `commit C` must be invisible everywhere. Commits are named by anchored change id and by the anchor's per-workspace working-copy key, never by position — except that the description check also requires `@` to still BE the handover change.",
+      "hole": "That last `@` pin is incidental to the task: a correct solve that finishes with a fresh `jj new` on top loses a quarter of the reward."
+    },
+    {
+      "name": "edit_commit_message",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": true,
+      "provisional": false,
+      "grading": "The renamed commit is the bootstrap's own 'Add file B', found by anchored change id — `jj describe` preserves change ids, which is why a rename is checkable this way and a description is not — and must now contain 'Add second file'. The new commit is the agent's, so it has no anchored id and is anchored by relation instead: `@`'s parents must be exactly the anchored 'Add file C' change before its description and d.txt's contents are read. The docstring records that the parent claim is what killed a measured `jj new -r 'root()'` rebuild that had scored 1.0.",
+      "hole": "`@` must literally be the new 'Add file D' commit, so a correct solve that finishes with an extra `jj new` fails two of the three scored tests."
+    },
+    {
+      "name": "rebase_branch",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": true,
+      "provisional": false,
+      "grading": "The rebase is graded as topology rather than as a count: `main` must be an ancestor of `feature-branch`, `main..feature-branch` must be exactly two commits forming a linear chain planted directly on main, and — when the anchor is present — those three must be the bootstrap's own commits by change id. The resolution is read with `jj file show data.txt` at the anchored head and compared line-wise (not byte-wise, so a missing trailing newline does not fail a correct answer) against ['Line from main', 'Line from feature']. Conflict-freedom is the floored test and comes from the `conflict` template keyword rather than from `jj resolve --list`'s prose.",
+      "hole": "The identity half of the topology test sits behind `if all(wanted.values())`, so with no anchor file it silently degrades to bookmarks-and-ancestry; and the conflict check is floored, so it earns nothing."
+    },
+    {
+      "name": "restore_interactive",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": true,
+      "provisional": false,
+      "grading": "Six scored assertions, every one about a commit's tree or its own diff, byte-compared against the bootstrap's literal file contents. 'remove legacy module' must carry settings.toml at the original bytes and must no longer list it among the paths it changes while still changing exactly legacy.py and main.py; 'Initial commit' and 'add logging' must be untouched; the handover working copy must still change only notes.txt; and settings.toml must be back on disk. Named commits resolve by anchored change id and the working copy by the anchor's per-workspace key; the one positional element is deliberately relaxed to `@`-or-an-ancestor, which replaced an equality that had been failing correct solves that ran `jj new`.",
+      "hole": null
+    },
+    {
+      "name": "split_commit_interactive",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": true,
+      "provisional": false,
+      "grading": "The two halves are located from the bootstrap's own commit rather than by position: the anchored change is resolved, and whether the split gave its id to the newer or the older half is worked out from its parentage. Each half must resolve to exactly one commit and the anchored commit must be one of the two; the older must be described exactly 'Add feature A' with feature_a.py and not feature_b.py in its `jj diff -s`, the newer the mirror image. Both scored tests re-run that resolution, so a fabrication cannot collect half the reward, and the old `@`-position test is gone — it scored a textbook `jj edit` + `jj split -i` solve 0.5.",
+      "hole": "Only which filenames each half touches is graded, never the file contents, and `jj diff -s` is substring-matched — so a split that moves the right paths with the wrong bytes inside them still passes."
+    },
+    {
+      "name": "squash_range",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": true,
+      "provisional": false,
+      "grading": "The three bootstrap survivors must still be visible and any other visible commit must render `empty` — a scratch commit is free, a commit still carrying content is not. The two fix changes must be gone by change id rather than by text (a squash folds their descriptions into the target, so a text search would flag a correct solve), structure.txt at the target must be exactly 'logic fixed', and parents are compared as change ids. The anti-fabrication test is an `--at-op` replay: the operation at which the fixes stopped being visible must also be the one at which their content arrived in the target, which fails hand-edit-then-`jj abandon` and cannot fail an honest route however many operations it took. All eight tests are now scored — the floor was re-measured at 0 of 8 in af369f13, correcting a hand-edited 3 that had been scoring the task out of five.",
+      "hole": "The op-log replay authenticates the history against itself, so it is only the anchor that makes it an integrity check; and the op-count test that made this the sharpest separator in the 795-trial baseline was deleted for grading method rather than outcome, so two sequential squashes are now believed to score 1.0."
+    },
+    {
+      "name": "template_customize_log_output",
+      "tier": "shipping",
+      "anchored": false,
+      "separated": true,
+      "provisional": false,
+      "grading": "Neither test grades a commit; the task carries no anchored claim of its own. `jj config get template-aliases.log_custom` must exit 0 and its value — after a real newline is normalised back to the two characters of an escape, so hand-written and `jj config set` forms compare equal — must name `change_id.short()`, `description.first_line()`, the ' | ' separator and a newline. The real assertion is the second: `jj log -r all() --no-graph -T log_custom` must render byte-identically to the verifier rendering the reference template over the same revisions, which is indifferent to quoting and to which config layer the alias lives in. That tolerance was written to fix a measured grader artifact: identical correct behaviour scored 1.0 hand-edited and 0.5 through `jj config set`.",
+      "hole": "Nothing anchors the graded object, and on jj 0.44 a template runtime error renders `<Error: …>` inline at exit 0 — both sides of the byte comparison would render it identically, so the render test can pass on garbage until an explicit `<Error:` rejection is added."
+    },
+    {
+      "name": "track_untracked_file",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": true,
+      "provisional": false,
+      "grading": "Everything is asserted about one commit: the change the bootstrap's working copy was sitting on, resolved through the anchor's reserved per-workspace key because its handover description was empty. That commit must list app.log in `jj file list` and its description must contain 'Track log file'. The floored third test byte-compares .gitignore against the bootstrap's exact contents both on disk and in that commit's tree. Nothing is positional — the previous version graded `@-`, which scored a correct `jj describe` finish 0 and a fabricated commit at `@-` a full 1.0.",
+      "hole": "The byte-exact .gitignore check that catches the `!app.log` cheat is the floored one, so that cheat still passes both scored tests and is only capped below 1.0 rather than zeroed."
+    },
+    {
+      "name": "workspace_update_stale",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": true,
+      "provisional": false,
+      "grading": "All three assertions additionally require the commit they inspect to be, or to descend from, the change this workspace's working copy was sitting on at handover — which is where the other workspace's work landed, and which the docstring records as what killed a measured fabricate-from-`root()` solve that had scored 1.0. `jj st` must exit 0 in the project (a stale working copy exits 1 on the pinned jj); config.json must parse with status 'active' and the other workspace's `new` field preserved, both on disk and in the commit at `@-`; and that commit's description must contain 'Activate config'.",
+      "hole": "The graded commit is `@-` by position, so a correct solve that finishes by describing the updated working copy in place fails two of the three scored tests. A redundant stderr grep for the word 'stale' also sits behind the exit-code check that already discriminates."
+    },
+    {
+      "name": "absorb_changes",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": false,
+      "provisional": true,
+      "grading": "Graded as per-file placement, which is what distinguishes absorb from a wholesale squash. The anchored 'Initial commit' must touch feature_a.py in its own diff with the fix content there, and `{target}..@ & files(...)` must be empty so no later commit is still modifying that path; feature_b.py is the same test against the anchored 'Add feature A'. The third test requires `@` to be or to descend from that commit, to render `empty` and to have no changed paths — anchored by relation because the per-file `jj squash --into` route empties the handover `@` and jj abandons an emptied squash source.",
+      "hole": "The content check is a substring of the fix marker, so hand-placing the right line into the right ancestor passes without `jj absorb` ever running — correct under R3, but it means the task cannot distinguish absorb from a careful manual squash."
+    },
+    {
+      "name": "undo_mistaken_rebase",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": false,
+      "provisional": true,
+      "grading": "The operation log is replayed with `jj --at-op`, asking at each operation where the bootstrap's `B` change was sitting, as change ids. One scored test requires that at some recorded operation `B`'s only parent was the anchored `base`; the other requires that plus `B` sitting on `A` at the current operation with the `conflict` keyword false. The conjunction is deliberate: this task's correct end state IS its bootstrap state, so all four pure end-state assertions are in the vacuity floor and earn nothing. No route is named, so undo, op undo, op revert and op restore all qualify — the previous English-matching version mis-scored a throwaway rebase that never touched `B` at 1.0.",
+      "hole": "Only two scored tests, so a single grader artifact halves the task; and the replay cannot tell a deliberately staged rebase-and-revert from a genuine mistake — only the anchor rules that out."
+    },
+    {
+      "name": "operation_recovery",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": false,
+      "provisional": true,
+      "grading": "The recovered state is asserted commit by commit: file3/4/5.txt off disk and out of the tree of the anchored change the bootstrap went on to describe 'Commit 3', which must track exactly file1.txt and file2.txt; nothing described Commit 3, 4 or 5 visible, and the anchored Commit 4 and Commit 5 changes not resolving at all. Then `@` must BE that anchored 'Commit 3' change, render empty, be undescribed, and sit on the anchored 'Commit 2' — which is what separates going back to the earlier state from editing history forward into a similar-looking shape. Finally exactly four commits may be visible, and the three anchored changes must be among them.",
+      "hole": "`@` must be exactly the recovered change, so a correct recovery that ends standing somewhere else loses a fifth of the reward; and the commit-id equality that would catch a rebuild-then-`op restore` is floored, so it earns nothing."
+    },
+    {
+      "name": "git_fetch_remote",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": false,
+      "provisional": true,
+      "grading": "Both assertions are made in the bare remote with git plumbing, against a commit id computed from the working repository at verification time: the rebase preserves the change id and rewrites the commit id, so the expected value cannot be stored anywhere. The bootstrap's 'Feature commit' change is resolved by anchored change id, and `git rev-parse refs/heads/feature` in the remote must equal what it resolves to now. The second test adds that the remote has a `main`, that `feature` is not the same commit as it, and that main is an ancestor of feature — which together kill the measured `git branch feature main` cheat that scored 1.0 without running jj at all.",
+      "hole": "The two scored tests overlap heavily — both assert the same equality — so the reward is close to pass/fail, and nothing asserts that a fetch ever happened."
+    },
+    {
+      "name": "workspace_add",
+      "tier": "shipping",
+      "anchored": true,
+      "separated": false,
+      "provisional": true,
+      "grading": "The load-bearing claim, re-run in all three tests, is that the new directory is backed by the project's own repository: the change id the anchor recorded for the project's handover working copy must resolve from inside it, which a separately-created repository cannot do whatever it is named. Around that: the directory exists and `jj workspace root` there prints it, `jj workspace list` in the project reports at least two workspaces with the anchored working copy among their targets and the new directory's own `@` among them, and a plain `jj status` — deliberately without `--ignore-working-copy` — succeeds there. The resolve-from-inside check is what closed the measured `jj git init` cheat that had scored 1.0.",
+      "hole": "With no anchor file the identity claim degrades to 'the project's current `@` resolves inside the workspace', and one assertion compares `jj workspace root` stdout against a hardcoded path literal."
+    },
+    {
+      "name": "bookmark_create_and_move",
+      "tier": "demoted",
+      "anchored": true,
+      "separated": false,
+      "provisional": false,
+      "summary": "Create `feature-x`, commit on top of it, move the bookmark to the new commit.",
+      "grading": "`feature-x` must appear in `jj bookmark list` and the commit it resolves to must be described 'add feature y' and be, or descend from, the anchored handover working copy.",
+      "hole": "The bookmark-list check is a bare substring, and nothing asserts the bookmark ever sat on the initial commit first — the 'create then move' half is not separately graded."
+    },
+    {
+      "name": "new_commit",
+      "tier": "demoted",
+      "anchored": true,
+      "separated": false,
+      "provisional": false,
+      "summary": "Build a linear three-commit chain from the current working copy.",
+      "grading": "`@`, `@-` and `@--` must carry the three exact descriptions and the three files, with `@--` pinned to the anchored handover change.",
+      "hole": "Everything above the anchor is positional: a correct stack finished with one extra `jj new` fails all three scored tests."
+    },
+    {
+      "name": "new_insert",
+      "tier": "demoted",
+      "anchored": true,
+      "separated": false,
+      "provisional": false,
+      "summary": "Insert a commit between two existing ones and rebase the descendants onto it.",
+      "grading": "The inserted commit is addressed as the single commit between two anchored endpoints; feature.txt must match exactly, its own diff must be exactly that one path, and the anchored ancestry must show one commit between A and B.",
+      "hole": "Nothing asserts the inserted commit's description, or that B's and C's contents survived the rebase — only their order and change ids."
+    },
+    {
+      "name": "obslog_view",
+      "tier": "demoted",
+      "anchored": true,
+      "separated": false,
+      "provisional": false,
+      "summary": "Write a report of every version a change has ever pointed at, without disturbing the repository.",
+      "grading": "The verifier recomputes the answer by running `jj evolog` at the anchored change and requires the saved report to contain every version's commit id prefix and description; most of those versions are hidden from an ordinary log, so nothing is hardcoded.",
+      "hole": "The report only has to contain the ids, so any superset passes; and the leave-it-alone requirement is floored, so violating it caps rather than zeroes."
+    },
+    {
+      "name": "revert_file",
+      "tier": "demoted",
+      "anchored": true,
+      "separated": false,
+      "provisional": false,
+      "summary": "Discard one file's uncommitted changes, restore another from a bookmark, keep a third.",
+      "grading": "All three scored tests first require `@` to still be the anchored handover change; against it, config.py and utils.py must match and the description must be exact.",
+      "hole": "`@` must be exactly the handover change, so an otherwise-correct solve that leaves a fresh empty commit on top scores 0; config.py is substring-checked rather than compared exactly."
+    },
+    {
+      "name": "show_commit",
+      "tier": "demoted",
+      "anchored": true,
+      "separated": false,
+      "provisional": false,
+      "summary": "Write a script that prints a revision with a git-format diff, and capture two patches with it.",
+      "grading": "The script must be executable and, run on an anchored change id, print a `diff --git` header and the commit's own identity; both patch files must carry the identity of the anchored commit they claim to describe, because a git diff of identical content is byte-identical everywhere.",
+      "hole": "One of the four scored tests asks only whether an executable file exists, so 0.25 is collectable with no repository work at all."
+    },
+    {
+      "name": "status_ignored",
+      "tier": "demoted",
+      "anchored": true,
+      "separated": false,
+      "provisional": false,
+      "summary": "Ignore a tracked file and untrack it without deleting it from disk.",
+      "grading": "Graded as the difference between untracking a file and never having tracked it: at least two commits must touch build.log, the most recent must not track it while its parent does, the file must still be on disk, and the oldest toucher must be the anchored 'initial commit'.",
+      "hole": "`.gitignore` is only substring-checked, so an over-broad or negated rule passes, and the two-commit check counts any two commits touching the path rather than the specific pair."
+    }
+  ]
+}

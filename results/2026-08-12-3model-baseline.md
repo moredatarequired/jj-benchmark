@@ -1,5 +1,13 @@
 # 2026-08-12 three-model baseline
 
+> **Superseded as a description of the suite.** This measured 53 tasks. The suite has
+> since been cut to 14 (ROADMAP.md "What's done" #6), and 39 of the tasks scored below no
+> longer exist — including most of the ones that were 5/5 everywhere, which is why they
+> were cut. Nothing here is a baseline for the current instrument: the per-model means are
+> averages over a task set that is gone, and the per-task rows for deleted tasks are the
+> evidence *for* the cut rather than a measurement to compare against. Kept unedited as
+> the record of what the old suite did.
+
 Top-level results for the first full sweep against the merged hardening stack.
 
 **What was run.** All 53 tasks, 5 attempts each, against 3 models — **795 trials** — on

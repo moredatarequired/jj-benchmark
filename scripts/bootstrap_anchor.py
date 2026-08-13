@@ -32,9 +32,9 @@ So this script records, per task, for the *untouched bootstrap image*:
   * `working_copies`: the handover `@` of EVERY workspace of the repository,
     keyed by workspace NAME. This is a reserved key and it exists because the
     commit keys are description first lines, and `""` is not a unique key --
-    workspace_forget's bootstrap holds two commits described `""`, resolve_tool's
-    holds three, restore_file_from_parent's and workspace_update_stale's hold
-    two each. A workspace name is unique by construction, so
+    workspace_update_stale's bootstrap holds two commits described `""`, and
+    before the cut to 14 tasks there were bootstraps holding three. A workspace
+    name is unique by construction, so
     `anchored_working_copy(workspace="experiment")` can name a commit that
     `anchored_change_id("")` cannot, and an exemption entry can too.
 
@@ -140,10 +140,10 @@ CLI, deliberately shaped like scripts/vacuity_floor.py
 ======================================================
 
     scripts/bootstrap_anchor.py --write                    # all tasks, 4 at a time
-    scripts/bootstrap_anchor.py --write --task conflict_resolution
+    scripts/bootstrap_anchor.py --write --task rebase_branch
     scripts/bootstrap_anchor.py --check --jobs 4
     scripts/bootstrap_anchor.py --verify-untouched --jobs 4
-    scripts/bootstrap_anchor.py --write --task git_import --keep-images
+    scripts/bootstrap_anchor.py --write --task squash_range --keep-images
 
 Pure stdlib. Requires a working docker daemon.
 """
@@ -288,8 +288,8 @@ def store_key(root):
 
     An added workspace's .jj/repo is a FILE holding the path of the primary
     workspace's .jj/repo; the primary's is a directory. Resolving that
-    indirection is what makes workspace_forget (two roots, one repo) record one
-    anchor instead of two identical ones.
+    indirection is what makes workspace_update_stale (two roots, one repo)
+    record one anchor instead of two identical ones.
     """
     repo = os.path.join(root, ".jj", "repo")
     if os.path.isfile(repo):
@@ -307,8 +307,7 @@ def working_copies(root, roots):
     From ONE `jj workspace list` in any workspace of the repo, which is the
     authoritative source for the names: a workspace name is unique within a
     repository, which is exactly the property the description keys lack (`""`
-    identifies two commits in workspace_forget's bootstrap and three in
-    resolve_tool's).
+    identifies two commits in workspace_update_stale's bootstrap).
 
     `jj workspace list` does not print the workspace ROOT PATH, so the path is
     filled in by matching against the roots discovered on disk -- and is left
@@ -368,9 +367,11 @@ def capture(root, roots):
             "commit_id": parts[1],
             # Recorded so a per-task assertion can say "the bookmark the task
             # grades still points at a commit the BOOTSTRAP created". NOT
-            # asserted globally: bookmark_create_and_move, bookmark_push,
-            # bookmark_delete and bookmark_rename all legitimately move or
-            # remove bootstrap bookmarks, so a global check would fail correct
+            # asserted globally: plenty of correct solves legitimately move or
+            # remove a bootstrap bookmark -- git_fetch_remote's rebase moves
+            # `feature`, and the four dedicated bookmark tasks that made this
+            # unarguable (create_and_move, push, delete, rename) were cut with
+            # the suite, not disproved -- so a global check would fail correct
             # solves.
             "bookmarks": [b for b in parts[2].split(",") if b],
             "description": SEP.join(parts[3:]),
@@ -401,8 +402,9 @@ def main():
     # Primary workspaces first, so that when two workspaces share one repo the
     # anchor records the PRIMARY one rather than whichever sorted first. A
     # primary workspace's .jj/repo is a directory; an added workspace's is a
-    # file holding the primary's path. workspace_forget and
-    # workspace_update_stale are the two tasks where this matters.
+    # file holding the primary's path. workspace_update_stale is the task where
+    # this matters (workspace_add's second workspace is created by the agent,
+    # so the untouched image it is measured on has only the primary).
     roots = sorted(
         workspace_roots(),
         key=lambda r: (os.path.isfile(os.path.join(r, ".jj", "repo")), r),
@@ -431,7 +433,7 @@ def environment_sha256(env_dir: Path) -> str:
     This is the staleness key, and it is NOT the docker image id. MEASURED:
     buildx/BuildKit mints a NEW image id on every `docker build` even when every
     layer is a cache hit and the image's own Created timestamp is unchanged --
-    two consecutive fully-cached builds of tasks/git_import/environment gave
+    two consecutive fully-cached builds of one task's environment gave
     sha256:0bda71ea... and sha256:ed408284... while the bootstrap's change ids
     were byte-identical. So an image-id comparison reports staleness on every
     run and is worse than useless: it would train whoever runs --check to
@@ -590,11 +592,13 @@ def measure(task: str, keep_image: bool, quiet: bool) -> dict:
 
 
 def build_record(task: str, raw: dict, image_id: str, env_digest: str) -> dict:
-    # anchored=false is a first-class, well-defined answer, not an error.
-    # working_copy_as_commit, template_formatting and git_remote_add ship an
-    # EMPTY directory on purpose -- creating the repo IS the task -- so there is
-    # no bootstrap identity to preserve and tests/anchor.py must abstain rather
-    # than fail. Writing the file anyway (with anchored=false) is what makes
+    # anchored=false is a first-class, well-defined answer, not an error. A task
+    # can ship an EMPTY directory on purpose -- creating the repo IS the task --
+    # so there is no bootstrap identity to preserve and tests/anchor.py must
+    # abstain rather than fail. No current task is in that state (the three that
+    # were, working_copy_as_commit / template_formatting / git_remote_add, were
+    # cut with the suite), and this path is kept for the next one that is.
+    # Writing the file anyway (with anchored=false) is what makes
     # "no anchor" distinguishable from "the anchor was never generated".
     repos = [
         {

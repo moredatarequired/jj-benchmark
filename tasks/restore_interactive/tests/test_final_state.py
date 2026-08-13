@@ -174,35 +174,71 @@ def file_at(rev, path):
     return result.stdout
 
 
-def assert_is_the_handover_working_copy():
-    """`@` must still be the working-copy commit the bootstrap handed over.
+def assert_the_handover_working_copy_is_still_checked_out():
+    """The bootstrap's working-copy commit must still be `@` or an ancestor of it.
 
     This is the identity claim that makes the disk-level and working-copy-level
     assertions below mean something: without it they are satisfied by any commit
     with the right tree, including one fabricated from `root()`.
+
+    It used to demand `@` BE that change. That is stricter than the task, and
+    strictly so: an agent that runs `jj new` at any point -- to keep the working
+    copy clean while it rewrites history, which is an ordinary jj habit and one
+    nothing in the request speaks against -- ends on a fresh empty change whose
+    parent is the handover commit. The mid-stack fix is then completely correct
+    and two of the six scored tests fail on where the agent happened to be
+    standing.
+
+    Requiring the handover change to be on `@`'s ancestry keeps every property
+    that mattered. A fabricated stack built from `root()` and checked out is not
+    a descendant of the handover change, so it still cannot be what gets graded,
+    and each caller goes on to assert about the handover change itself rather
+    than about `@`.
     """
     snapshot_working_copy()
     handover = handover_working_copy()
-    here, there = change_ids("@"), change_ids(handover)
-    assert here == there, (
-        f"`@` is {here}, but the working copy the bootstrap handed over is "
-        f"{there}. Fixing the mid-stack commit rebases the working copy and "
-        "preserves its change id, so `@` has to still be that change."
+    assert change_ids(f"({handover}) & ::@"), (
+        f"The working copy the bootstrap handed over ({change_ids(handover)}) "
+        f"is not `@` ({change_ids('@')}) and is not an ancestor of it. Fixing "
+        "the mid-stack commit rebases the working copy and preserves its change "
+        "id, so that change has to still be the one checked out -- or the "
+        "parent of wherever the agent finished."
     )
     return handover
 
 
 def test_history_shape():
-    """Exactly the original four commits, in the original order, still exist."""
-    chain = descriptions("::@ ~ root()")
+    """Exactly the original four commits, in the original order, still exist.
+
+    Empty undescribed commits are excluded from the comparison. They are what
+    `jj new` leaves behind, and an agent that starts a fresh change before
+    rewriting history -- see
+    assert_the_handover_working_copy_is_still_checked_out() -- adds one without
+    changing the history in any way a reviewer would call a change. This test is
+    floored, so it earns nothing; per tests/test.sh a failing floored test is
+    still enough to cap a correct solve below a full mark, so it must not fail
+    for something the task never asked about. A commit with content or with a
+    description is still counted, which is the case this is here for: work
+    parked in a fifth commit rather than folded into the one that dropped the
+    file.
+
+    The snapshot is taken here as well as in the working-copy tests: the
+    bootstrap leaves notes.txt written but unsnapshotted, so without it the
+    handover `@` reads as empty-and-undescribed and would be filtered out of the
+    comparison it is supposed to be part of.
+    """
+    snapshot_working_copy()
+    scratch = '(empty() & description(exact:""))'
+    chain = descriptions(f"(::@ ~ root()) ~ {scratch}")
     assert chain == EXPECTED_DESCRIPTIONS, (
         "The four commits above the root must still be, oldest first: "
         f"{EXPECTED_DESCRIPTIONS}. Got: {chain}"
     )
-    all_commits = descriptions("all() ~ root()")
+    all_commits = descriptions(f"(all() ~ root()) ~ {scratch}")
     assert len(all_commits) == 4, (
-        "The repository must still contain exactly four commits above the root; "
-        f"found {len(all_commits)}: {all_commits}"
+        "The repository must still contain exactly four commits above the root "
+        f"(empty, undescribed ones aside); found {len(all_commits)}: "
+        f"{all_commits}"
     )
 
 
@@ -293,7 +329,7 @@ def test_later_commit_intact():
 
 def test_working_copy_intact():
     """The working copy still adds notes.txt and nothing else."""
-    handover = assert_is_the_handover_working_copy()
+    handover = assert_the_handover_working_copy_is_still_checked_out()
     assert changed_paths(handover) == {"notes.txt"}, (
         "The working copy's only change relative to its parent must be the "
         f"addition of `notes.txt`, but it changes: {sorted(changed_paths(handover))}"
@@ -318,7 +354,7 @@ def test_settings_on_disk():
     so "the file is back on disk" cannot be satisfied by checking out a
     fabricated commit that happens to contain it.
     """
-    assert_is_the_handover_working_copy()
+    assert_the_handover_working_copy_is_still_checked_out()
     settings_path = os.path.join(PROJECT_DIR, "settings.toml")
     assert os.path.isfile(settings_path), (
         f"{settings_path} does not exist on disk."

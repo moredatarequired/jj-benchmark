@@ -16,6 +16,18 @@ off the untouched image before the agent ran (see tests/anchor.py) and is
 preserved by the rebase the task asks for, while the commit id is rewritten by
 it -- which is why the commit id has to be resolved from the change id at test
 time and can never be taken from the anchor file.
+
+Carried over from `bookmark_push`, which was folded into this task when the
+suite was cut to 14: the tree check in test_feature_pushed_to_remote. Identity
+by change id says the *right commit* reached the remote; it does not say that
+commit still carries the work, and an agent that restored `feature.txt` away
+before pushing would satisfy every id comparison here. `bookmark_push`'s
+`test_remote_branch_contains_file` was the only assertion in the pair that read
+the pushed tree, so it moves here. Everything else `bookmark_push` did is
+already stronger in this file: its bookmark check was reachable-from, this one
+is equality; and its "create a bookmark on an anonymous commit and push it as a
+NEW remote bookmark" surface is this task's fixture too, because the bootstrap
+creates `feature` locally (`jj bookmark create feature`) and never pushes it.
 """
 
 import os
@@ -94,6 +106,21 @@ def test_feature_pushed_to_remote():
         "branch in the remote therefore does not hold the work that was handed "
         "over -- it points at some other commit that was created or moved into "
         "place instead of being pushed."
+    )
+
+    # From the folded `bookmark_push`: the pushed commit must still hold the
+    # work. Equality above proves *which* commit arrived; only its tree proves
+    # the file the `Feature commit` change introduced is still in it.
+    listed = git("ls-tree", "-r", "--name-only", wanted)
+    assert listed.returncode == 0, (
+        f"`git ls-tree -r {wanted}` failed in {REMOTE_DIR}: "
+        f"{listed.stderr.strip()}"
+    )
+    assert "feature.txt" in listed.stdout.split(), (
+        f"The commit the task handed over ({wanted}) reached the remote, but it "
+        f"no longer contains feature.txt: {listed.stdout!r}. The `{FEATURE}` "
+        "change was pushed with its own content removed, so what the remote "
+        "now holds is not the work this task is about."
     )
 
 

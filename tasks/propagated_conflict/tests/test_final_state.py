@@ -36,10 +36,20 @@ Three things those runs showed, each of which changed an assertion here:
     main" test would fail jj's own recommended route. So the four-commit
     assertion is made over the DAG range between the anchored first and last
     stack commits, which that sibling is not in, and the no-fifth-commit half
-    ignores EMPTY UNDESCRIBED commits specifically -- rather than ignoring
-    everything outside the tip's descendants, which is what it did until a
-    described fifth commit hanging off main was measured scoring 1.000. See
+    ignores EMPTY commits -- rather than ignoring everything outside the tip's
+    descendants, which is what it did until a described fifth commit hanging
+    off main was measured scoring 1.000. See
     test_the_stack_is_still_four_commits_with_both_sides_kept.
+
+  * A DESCRIBED EMPTY COMMIT IS ALSO A CORRECT SOLVE. `jj commit -m "..."` on
+    a working copy parked at the origin -- an ordinary way to finish, after the
+    resolution has already been squashed in -- leaves an empty commit that is
+    DESCRIBED. An exemption reading "empty AND undescribed" counted it as a
+    forbidden fifth commit and docked a correct solve to 0.667 (measured). The
+    exemption is therefore `empty()` alone: an empty commit carries no content
+    and so cannot encode a wrong answer however it is described. The comment in
+    that test records why duplicate_range chose the narrower form for itself and
+    why the difference is right.
 
   * `@` DOES NOT COME BACK. Route A ends with `@` parked on the origin commit,
     not on the stack tip where the bootstrap left it. Nothing here reads `@`'s
@@ -67,12 +77,27 @@ Recorded plainly so nobody later reads 1.0 here as more than it is. None of
 this is a defect to be patched in passing: it is what this fixture can and
 cannot support, measured on this image rather than argued.
 
-  * IT IS A TWO-LEVEL INSTRUMENT: 0.333 or 1.0. Every route measured lands on
-    0, 0.333 or 1.0, and nothing in between, because the three scored tests do
-    not fail independently. Resolving anywhere but the origin fails two of them
-    together; `:ours` and `:theirs` fail two of them together. Read a score
-    here as a three-way verdict -- did nothing / did the git-shaped thing /
-    used jj's model -- and never as a proportion of a job done.
+  * ON THE QUESTION IT EXISTS TO ASK, IT IS A TWO-LEVEL INSTRUMENT: 0.333 or
+    1.0. The three scored tests do not fail independently on that axis, because
+    two of them turn on one content judgement (see below). Every route that
+    resolves the conflict at all scores 0.333 if it did the git-shaped thing --
+    resolving anywhere but the origin fails two together, and so do `:ours` and
+    `:theirs` -- and 1.0 if it used jj's model. There is no partial credit
+    between those for a better or worse resolution. Read that axis as a
+    three-way verdict -- did nothing / did the git-shaped thing / used jj's
+    model -- and never as a proportion of a job done.
+
+    ONE BAND SITS BETWEEN THEM, AND IT IS THE FOUR-COMMIT CLAUSE, ON PURPOSE.
+    A correct resolution that also leaves a forbidden fifth commit scores
+    0.667: it passes the conflict and origin-content tests and fails
+    test_the_stack_is_still_four_commits_with_both_sides_kept on that test's
+    structural half alone. Measured, both on this image with the anchor
+    present: a described non-empty commit ON THE TIP 0.667, and one FORKED OFF
+    THE ORIGIN 0.667. That band is the whole point of folding the constraint
+    into a scored test -- before it, the first of those scored 0.667 purely
+    from test.sh's exit-status cap and the second scored a clean 1.000 -- so it
+    is a real third outcome rather than a wobble in a two-level reading. What
+    stays two-level is the judgement about WHERE the conflict was resolved.
 
   * jj PRINTS MOST OF THE ROUTE. `jj status` in the handover state attaches a
     hint that NAMES the origin commit and spells out `jj new <origin>` ...
@@ -353,13 +378,69 @@ def test_the_stack_is_still_four_commits_with_both_sides_kept():
     # descendants; a described fifth commit hanging off main is not in the
     # stack's descendants, and under the old form it scored 1.000.
     #
-    # Empty undescribed commits are subtracted because the route jj ITSELF
-    # recommends leaves one: `jj squash` empties the scratch commit, jj abandons
-    # it and mints a fresh empty `@` as a sibling of the stack (see the module
-    # docstring). A check that did not ignore those would fail jj's own advice.
+    # THE BREADTH IS DELIBERATE, AND IT IS BROADER THAN THE SENTENCE "the stack
+    # is four commits". `all() ~ ...` means a non-empty described commit ANYWHERE
+    # outside the tip's ancestry fails this, not only one attached to the stack.
+    # That is right for THIS fixture and worth stating rather than leaving to be
+    # rediscovered:
+    #
+    #   * this repository contains nothing but `main`, the history below it and
+    #     the four-commit stack. There is no second branch, no unrelated work,
+    #     nothing a legitimate solve of THIS request would leave outside that
+    #     ancestry. So "outside the tip's ancestry" and "a commit the agent
+    #     added" are the same set here, and the wide form is a faithful reading
+    #     of "leave the stack as the same four commits" rather than a stricter
+    #     one bolted onto it.
+    #   * anything narrower reopens the hole this widening closed. The agent
+    #     CHOOSES where to fork, so scoping the check to any one subtree --
+    #     descendants of the tip, descendants of the origin, the stack's own
+    #     range -- leaves a place to put a fifth commit where the check cannot
+    #     see it. `descendants(tip)` was that mistake and it scored a clean
+    #     1.000 (module docstring); picking a different subtree would only move
+    #     the blind spot rather than remove it.
+    #
+    # IF THE FIXTURE EVER GAINS A SECOND, UNRELATED LINE OF WORK, this revset has
+    # to be rescoped -- to the stack's ancestry plus whatever that line is -- or
+    # it will start failing solves for commits that were never the agent's doing.
+    # It is safe today because of a property of the fixture, not because of a
+    # property of the request, and that distinction is the thing to check before
+    # copying this revset into another task.
+    #
+    # EMPTY commits are subtracted -- described or not. Two reasons, and the
+    # second is why the exemption is not the narrower "empty AND undescribed":
+    #
+    #   * the route jj ITSELF recommends leaves an empty commit behind: `jj
+    #     squash` empties the scratch commit, jj abandons it and mints a fresh
+    #     empty `@` as a sibling of the stack (see the module docstring). That
+    #     one happens to be undescribed, so the narrow form covered it.
+    #   * but `jj commit -m "..."` on a parked working copy leaves an empty
+    #     commit that IS described. That is an ordinary way to finish a solve --
+    #     the resolution is already squashed into the origin, so the commit the
+    #     agent makes to "save" it captures nothing -- and under the narrow form
+    #     it counted as a forbidden fifth commit and cost a correct solve a
+    #     third of its score. Measured on this image, below.
+    #
+    # The claim the exemption rests on: an EMPTY commit carries no content, so
+    # it cannot encode a wrong answer however it is described. Everything this
+    # test is defending against -- a fix-up on top, a rebuilt stack, a resolution
+    # parked in a fifth commit instead of reaching the origin -- has to CHANGE
+    # SOMETHING to be wrong, and any of those is non-empty and still caught
+    # (measured: a described non-empty commit on the tip, and one forked off the
+    # origin, both still fail).
+    #
+    # NOT THE SAME CHOICE AS duplicate_range, DELIBERATELY. That task
+    # (claude/new-tasks-3) excludes only `empty() & description(exact:"")`, the
+    # narrow form, and it is right to. There the deliverable IS a commit: the
+    # agent is asked to produce a copy, so a described commit is an ASSERTION --
+    # something offered AS the copy -- and a described empty one is a claim to
+    # have done the work without having done it, which must fail. Here the
+    # deliverable is FILE CONTENT AT AN ANCHORED COMMIT; no commit the agent adds
+    # can ever be the answer, and this test is a "nothing else was added"
+    # constraint rather than a grader. A description carries evidential weight
+    # there and none here, so the same word means different things and the two
+    # tasks land on different revsets on purpose.
     added = change_ids(
-        f"all() ~ root() ~ ::change_id({anchored[-1]}) "
-        "~ (empty() ~ description(regex:'.'))"
+        f"all() ~ root() ~ ::change_id({anchored[-1]}) ~ empty()"
     )
     assert not added, (
         f"a commit was added to the repository: {describe(added)}. The request "

@@ -63,16 +63,16 @@ REQUIRED_FILES = (
     "tests/vacuity_floor.json",
 )
 
-# Shared verifier infrastructure: copied verbatim into all 53 tasks, because
+# Shared verifier infrastructure: copied verbatim into every task, because
 # harbor mounts only one task's tests/ directory at /tests and there is nowhere
 # else for a shared module to live. Divergence between copies is always a bug --
-# it means one task is being verified by different code from the other 52.
+# it means one task is being verified by different code from all the others.
 SHARED_TEST_FILES = ("tests/test.sh", "tests/anchor.py", "tests/conftest.py")
 
 # tests/anchor_exemptions.json is OPTIONAL and per-task, so it is not in
 # REQUIRED_FILES and not in SHARED_TEST_FILES. Absent means "nothing this task
 # asks for removes a bootstrap commit", which is true of most tasks, and keeping
-# it absent rather than shipping 53 empty files is what makes the set of tasks
+# it absent rather than shipping an empty file per task is what makes the set of tasks
 # that DO claim an exemption reviewable at a glance. Unlike
 # tests/bootstrap_anchor.json it IS committed: it describes the task, not one
 # image build. The schema is enforced below; whether each entry actually names
@@ -135,7 +135,7 @@ REWRITTEN_PROMPT_TASKS = frozenset({
 JJ_VERSION_RE = re.compile(r"jj-v(\d+\.\d+\.\d+)")
 
 # tests/test.sh runs `python3 -m pytest --ctrf ...` and installs nothing, so
-# every image has to carry these already. The pins live in 53 Dockerfiles;
+# every image has to carry these already. The pins live in one Dockerfile per task;
 # this check is what stops one of them being bumped or dropped on its own and
 # only surfacing as a task that mysteriously errors mid-sweep.
 VERIFIER_DEPS = ("pytest==8.4.1", "pytest-json-ctrf==0.3.5")
@@ -449,8 +449,9 @@ def check_test_sh_reads_floor(task: str, task_dir: Path, findings: Findings) -> 
     """The shared test.sh is what applies the floor; it must still read it.
 
     Without this, reverting test.sh to the old 0/1 script (or to a naive
-    passed/tests fraction) leaves 53 floor files in the tree that nothing
-    consults, and the lint stays green because all 53 copies still agree.
+    passed/tests fraction) leaves a floor file per task in the tree that
+    nothing consults, and the lint stays green because all the copies still
+    agree.
     """
     path = task_dir / "tests/test.sh"
     if not path.is_file():
@@ -466,9 +467,9 @@ def check_test_sh_reads_floor(task: str, task_dir: Path, findings: Findings) -> 
 
 
 def check_conftest_applies_anchor(task: str, task_dir: Path, findings: Findings) -> None:
-    """tests/conftest.py is what makes the anchor apply without 53 edits.
+    """tests/conftest.py is what makes the anchor apply without a per-task edit.
 
-    Same argument as check_test_sh_reads_floor: 53 byte-identical copies of a
+    Same argument as check_test_sh_reads_floor: byte-identical copies of a
     conftest.py that no longer runs the check would leave the lint green while
     every verifier silently stopped detecting a rebuilt repository. So assert the
     two properties that make it work at all -- it calls the assertion, and it does

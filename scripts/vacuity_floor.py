@@ -8,7 +8,7 @@ tests/test.sh awards partial credit as
 where the *floor* is the SET OF TEST NAMES in
 tasks/<task>/tests/test_final_state.py that pass on the *untouched bootstrap
 image*, with no agent having run. Excluding them by name is what keeps a
-do-nothing agent at exactly reward 0, structurally: 20 of the 53 tasks pass at
+do-nothing agent at exactly reward 0, structurally: 6 of the 14 tasks pass at
 least one test with no agent, and undo_mistaken_rebase passes 4 of its 6 by
 design, because its correct end state IS the bootstrap state and only the
 operation log tells a real solve apart. Those are the only tests a nop agent
@@ -41,10 +41,10 @@ Pure stdlib. Requires a working docker daemon only when --ctrf is not given.
 
 Examples:
 
-    scripts/vacuity_floor.py --write                      # all 53, 4 at a time
-    scripts/vacuity_floor.py --write --task ignore_patterns
+    scripts/vacuity_floor.py --write                      # all 14, 4 at a time
+    scripts/vacuity_floor.py --write --task squash_range
     scripts/vacuity_floor.py --check --jobs 4             # what nightly CI runs
-    scripts/vacuity_floor.py --check --task ignore_patterns \
+    scripts/vacuity_floor.py --check --task squash_range \
         --ctrf "$logs/verifier/ctrf.json"                 # what per-task CI runs
 """
 

@@ -17,6 +17,12 @@ upstream  DISABLED_NO_PUSH_TO_UPSTREAM             (push)
 
 ## The problem, measured
 
+*Read this section as history.* Every number and every task name below describes the
+**53-task** suite as it stood before the cut recorded in "What's done" #6. That suite no
+longer exists: 39 of its tasks were deleted and 14 remain, so nothing here — the 53/53
+scores, the per-model failure lists, the "41 of 53 instructions" count — is a claim about
+what the suite does now. Several of the tasks named below have been deleted outright.
+
 Two things were wrong. Three tasks were broken outright, and the rest are too easy.
 
 **Broken tasks.** `bookmark_push` and `undo_mistaken_rebase` built `FROM
@@ -66,6 +72,7 @@ was 87–98%, about six tasks of resolution across the whole leaderboard.
 | #3 | Dropped the Pages deploy workflow — we're not publishing a leaderboard |
 | #4 | `rebase_branch` template separator. 0/8 across every model → 3/3 at k=3 |
 | #5 | Deleted the `## Implementation` section from all 41 tasks that had one. Task data the tests assert on was migrated into Requirements first |
+| #6 | **Cut the suite from 53 tasks to 14** (`docs/suite_redesign_proposal.md`). 39 deleted: duplicates of a survivor, tasks grading HOW rather than WHAT, two that were passable without running jj at all, and the 7 that were structurally sound but 5/5 on all three models — a saturated task contributes nothing to a paired comparison and still costs an image build and a verifier run per sweep. New tasks are authored on top of the 14, not alongside the old set |
 | in flight | Shared base image so harbor stops reinstalling Claude Code per trial |
 
 Baseline job results for all three models are in `/tmp/jjjobs/` and not committed yet —
@@ -77,23 +84,27 @@ decide whether we want our numbers sitting in the same table as the Pochi runs.
 **1. Make iteration fast.** A full sweep is 26 minutes at concurrency 3, which is too
 slow to tune skill variants against. Two causes, both silly:
 
-- `agent_setup` is 45% of all trial-seconds — harbor installing Claude Code into all
-  53 containers, downloading the same binary every time. Baking it into a shared base
+- `agent_setup` is 45% of all trial-seconds — harbor installing Claude Code into every
+  container, downloading the same binary every time. Baking it into a shared base
   image removes the phase; the adapter skips its install when `claude` is on PATH.
+  (The cut to 14 tasks shrinks the sweep in the same direction, but it does not fix
+  this: the phase is per *trial*, so it comes straight back as `-k` goes up.)
 - Docker Desktop is capped at 7.75 GiB on a 64 GiB machine, which is the only reason
   concurrency is 3. Raise it, drop `--override-memory-mb` to 512 (`task.toml` asks for
   8192, which is fantasy), and we're CPU-bound at 16 instead.
 
-Target is 2–4 minutes per sweep. Separately, all 53 Dockerfiles hardcode the x86_64 jj
-tarball, so everything runs under Rosetta on Apple Silicon; jj ships an aarch64 build.
+Target is 2–4 minutes per sweep. Separately, every one of the 14 Dockerfiles hardcodes
+the x86_64 jj tarball, so everything runs under Rosetta on Apple Silicon; jj ships an
+aarch64 build.
 
 **2. Create headroom.** In order of leverage: set `allow_internet = false`; strip the
-remaining command names out of the 21 instructions that still give the answer away in
-Background or Requirements (the `## Implementation` sections themselves are already
-gone); award partial credit from the CTRF per-test results instead of collapsing
-pytest to 1 or 0.
+remaining command names out of the instructions that still give the answer away in
+Background or Requirements (that was 21 of the old 53; it needs re-counting over the 14,
+and `squash_range` and `template_customize_log_output` are both known to be among them
+— `docs/suite_redesign_proposal.md` §1 R1 quotes the offending sentences); award partial
+credit from the CTRF per-test results instead of collapsing pytest to 1 or 0.
 
-**3. Re-baseline** all three models. If a frontier model still scores near 53/53, the
+**3. Re-baseline** all three models. If a frontier model still scores near 14/14, the
 tasks are too easy to measure skills with regardless of scoring, and the answer is new
 tasks rather than more knobs. `plan.md` §4 lists jj friction points — pushing an
 anonymous commit with no bookmark, committing conflict markers, undo after a push —
@@ -185,5 +196,8 @@ Drop a job directory into `jobs/` and it shows up. The leaderboard keys rows on
 model + agent, and every upstream row is the Pochi scaffold, so our claude-code
 numbers aren't apples-to-apples with theirs.
 
-**`revset_querying_bob` has never been run upstream.** It was added after their last
-job, which is why their runs show 52 tasks and ours show 53.
+**Our task set and upstream's no longer overlap enough to compare.** Upstream's runs
+show 52 tasks; ours showed 53 (`revset_querying_bob` was added after their last job) and
+now show 14, of which several have had their verifiers rewritten. Any comparison against
+an upstream number is a comparison against a different instrument, task names in common
+notwithstanding.

@@ -74,8 +74,9 @@ jj 0.38.0:
 So on some tasks the CORRECT solve necessarily removes a bootstrap commit:
 `abandon_commits` is two abandons, `squash_range`'s own
 `test_fix_commits_are_no_longer_visible` asserts those ids are gone, and
-`next_prev_navigation` is entirely about walking the working copy off an empty
-commit. Without an escape hatch this file would score every one of those solves
+`rebase_branch` and `split_commit_interactive` both hand over an empty
+undescribed `@` that the solve has to `jj edit` off, which auto-abandons it.
+Without an escape hatch this file would score every one of those solves
 0 -- exactly the false-negative class it exists to remove.
 
 The escape hatch is a per-task, hand-written, human-reviewable file at
@@ -143,8 +144,7 @@ WHAT IT DELIBERATELY DOES NOT ASSERT
   solve. They are in the anchor file for diagnosis only, and this module reports
   them in failure messages so a human can see what moved.
 
-* **Descriptions.** `describe_commit` and `edit_commit_message` exist to change
-  them.
+* **Descriptions.** `edit_commit_message` exists to change them.
 
 * **That the anchored commits are all that is visible.** Solving a task creates
   commits.
@@ -198,10 +198,11 @@ same thing for the handover working copy of a workspace.
 FAIL-SAFE, ON PURPOSE
 =====================
 
-If the anchor file is absent, unparseable, or says `anchored: false` (the tasks
-whose bootstrap ships an EMPTY directory -- `working_copy_as_commit`,
-`template_formatting`, `git_remote_add`, and `git_integration`, where creating
-the repository IS the task), this module ABSTAINS: it reports the reason and
+If the anchor file is absent, unparseable, or says `anchored: false` (a task
+whose bootstrap ships an EMPTY directory, where creating the repository IS the
+task -- no current task is in that state, the four that were are gone with the
+cut to 14, and the path is kept for the next one), this module ABSTAINS: it
+reports the reason and
 passes. An anchor that is not there is an infrastructure condition, and a
 rollout in which a missing file zeroes every trial is worse than the
 vulnerability it closes. The `--check` and `--verify-untouched` modes of
@@ -324,11 +325,11 @@ def _working_copies(repo: dict) -> list[dict]:
 
     A reserved key, written by scripts/bootstrap_anchor.py from
     `jj workspace list`. It exists because anchor keys are description first
-    lines and `""` is not a unique key: workspace_forget's bootstrap holds TWO
-    commits described `""` (the default workspace's working copy and the
-    experiment workspace's), and restore_file_from_parent, resolve_tool and
-    workspace_update_stale have the same problem. A workspace NAME is unique by
-    construction, so it is the key that works.
+    lines and `""` is not a unique key: workspace_update_stale's bootstrap
+    holds TWO commits described `""` (the default workspace's working copy and
+    the second workspace's), and before the cut to 14 tasks there were
+    bootstraps holding three. A workspace NAME is unique by construction, so it
+    is the key that works.
     """
     found = repo.get("working_copies")
     return found if isinstance(found, list) else []
@@ -617,7 +618,8 @@ def anchored_change_id(description: str, path: str = ANCHOR_PATH,
     Why that matters even when assert_bootstrap_anchor() passes: the anchor is a
     NECESSARY condition, not a sufficient one. It proves the bootstrap commits
     still exist -- it does not prove they are the commits the verifier graded.
-    Measured on history_rewriting: an agent that builds a fabricated stack from
+    Measured on the (since-cut) history_rewriting task: an agent that builds a
+    fabricated stack from
     `root()` and leaves the ORIGINAL stack untouched beside it satisfies the
     anchor (every anchored id is still visible) and still passes a verifier
     that greps `jj log` output or resolves by description. Addressing the graded
@@ -682,9 +684,9 @@ def anchored_working_copy(workspace: str = DEFAULT_WORKSPACE,
 
     The reserved key that makes an undescribed working-copy commit addressable.
     Anchor keys are description first lines, so `""` is not a unique key: it
-    identifies two commits in workspace_forget's bootstrap, three in
-    resolve_tool's, and two in restore_file_from_parent's and
-    workspace_update_stale's. A workspace name is unique by construction.
+    identifies two commits in workspace_update_stale's bootstrap, and bootstraps
+    identifying three existed before the cut to 14 tasks. A workspace name is
+    unique by construction.
 
     `workspace` is the jj workspace NAME as `jj workspace list` prints it --
     "default" for a repository that never had `jj workspace add` run in it.

@@ -66,12 +66,20 @@ def read_task(name):
     }
 
 
+# The seven non-shipping entries are no longer read from `tasks/`: they were
+# deleted when the suite was cut to 14, so there is no instruction.md and no
+# vacuity_floor.json to read. They stay in the review as a record of what went
+# and why, which is a judgment stored in suite_review_data_built.json and needs
+# no task tree.
 shipping, demoted = [], []
 for t in built_doc["tasks"]:
     item = dict(t)
-    item.update(read_task(t["name"]))
     item["status"] = "built"
-    (shipping if t["tier"] == "shipping" else demoted).append(item)
+    if t["tier"] == "shipping":
+        item.update(read_task(t["name"]))
+        shipping.append(item)
+    else:
+        demoted.append(item)
 
 proposed = []
 for t in proposed_doc["tasks"]:
@@ -116,8 +124,9 @@ TITLE = "The jj suite: prompts and grading"
 
 INTRO = (
     "Every task's prompt, and what its verifier actually checks. **14 built and "
-    "shipping**, **9 proposed** (design stage, plus one unassigned slot) and **7 "
-    "demoted** to a smoke tier, out of %d task directories in the tree. Generated "
+    "shipping** — %d task directories in the tree, so that is the whole suite — "
+    "plus **9 proposed** (design stage, plus one unassigned slot) and **7 cut**. "
+    "Generated "
     "by `docs/build_suite_review.py`, which writes this file and "
     "`docs/suite_review.html` in the same run; prompts and test counts are read "
     "from `tasks/` at build time, not stored." % SUITE_TOTAL
@@ -161,11 +170,14 @@ SECTIONS = [
     ("proposed", "Proposed — 9 designs, none built",
      proposed_doc["section_note"] + " " + proposed_doc["standing_constraints"],
      proposed),
-    ("demoted", "Demoted — 7 kept as a smoke tier",
-     "Still built, still running, still scored — just not part of the shipping "
-     "fourteen, all seven having scored 5/5 on all three model tiers. They keep "
-     "their original specification-style prompts, which have not been rewritten. "
-     "Listed for completeness, not for review.",
+    ("demoted", "Cut — 7 that measured nothing",
+     "Structurally sound, and deleted anyway: all seven scored 5/5 on all three "
+     "model tiers, and a task every model passes contributes exactly nothing to "
+     "a paired comparison while still costing an image build and a verifier run "
+     "per sweep. They were briefly parked as a smoke tier; that tier was dropped "
+     "with them. Listed as a record of what went, not for review — the "
+     "directories are gone from `tasks/`, so there is no prompt or test count to "
+     "read.",
      demoted),
 ]
 
@@ -255,15 +267,15 @@ for sec, title, blurb, items in SECTIONS:
     A("")
 
     if sec == "demoted":
-        A("| task | what it asks | tests |")
-        A("| --- | --- | --- |")
+        A("| task | what it asked |")
+        A("| --- | --- |")
         for t in items:
-            A("| `%s` | %s | %d, %d floored |" % (
-                t["name"], md_text(t["summary"]),
-                t["tests_total"], t["tests_floored"]))
+            A("| `%s` | %s |" % (t["name"], md_text(t["summary"])))
         A("")
         A("Grading summaries and known holes for these seven are kept in "
-          "`docs/suite_review_data_built.json` rather than reproduced here.")
+          "`docs/suite_review_data_built.json` rather than reproduced here; the "
+          "task directories themselves are recoverable at commit `73854f0b`, "
+          "the last commit before the cut.")
         A("")
         continue
 
@@ -333,10 +345,8 @@ for t in proposed:
     })
 pages.append({
     "kind": "table", "section": "demoted", "slug": "demoted",
-    "name": "Demoted — 7 kept as a smoke tier",
-    "rows": [[t["name"], t["summary"],
-              "%d, %d floored" % (t["tests_total"], t["tests_floored"])]
-             for t in demoted],
+    "name": "Cut — 7 that measured nothing",
+    "rows": [[t["name"], t["summary"]] for t in demoted],
 })
 
 payload = {
@@ -523,7 +533,7 @@ JS = r"""
   var SEC = {
     shipping: {label:"Shipping now", cls:"sec-ship"},
     proposed: {label:"Proposed \u2014 design stage", cls:"sec-prop"},
-    demoted:  {label:"Demoted \u2014 smoke tier", cls:"sec-dem"}
+    demoted:  {label:"Cut \u2014 measured nothing", cls:"sec-dem"}
   };
 
   function el(tag, cls, text){
@@ -657,20 +667,21 @@ JS = r"""
   function renderTable(t){
     var tbl = el("table","demoted");
     var thead = el("thead"), tr = el("tr");
-    ["task","what it asks","tests"].forEach(function(h){ tr.appendChild(el("th", null, h)); });
+    ["task","what it asked"].forEach(function(h){ tr.appendChild(el("th", null, h)); });
     thead.appendChild(tr); tbl.appendChild(thead);
     var tb = el("tbody");
     t.rows.forEach(function(r){
       var row = el("tr");
       row.appendChild(el("td","nm", r[0]));
       row.appendChild(rich(el("td"), r[1]));
-      row.appendChild(el("td","n", r[2]));
       tb.appendChild(row);
     });
     tbl.appendChild(tb);
     body.appendChild(tbl);
     body.appendChild(prose("Grading summaries and known holes for these seven are kept in "
-      + "`docs/suite_review_data_built.json` rather than reproduced here."));
+      + "`docs/suite_review_data_built.json` rather than reproduced here; the task "
+      + "directories themselves are recoverable at commit `73854f0b`, the last "
+      + "commit before the cut."));
   }
 
   function render(){
@@ -773,7 +784,7 @@ html = f"""<title>{TITLE}</title>
       <div class="tally">
         <span class="t-ship">14 shipping</span>
         <span class="t-prop">9 proposed</span>
-        <span>7 demoted</span>
+        <span>7 cut</span>
       </div>
     </div>
     <div id="preamble"></div>

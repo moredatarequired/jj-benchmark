@@ -10,6 +10,11 @@ You can view the upstream evaluation reports at [tabbyml.github.io/jj-benchmark]
 ## Project Structure
 
 - `tasks/`: Contains the benchmark tasks, each with its own instructions, bootstrap scripts, and tests.
+  **There are 14 of them.** The suite was 53; `docs/suite_redesign_proposal.md` is the
+  argument for cutting 39, and ROADMAP.md "What's done" #6 records the cut. New tasks are
+  authored on top of these 14 rather than alongside the old set, so **no measurement taken
+  before the cut describes the suite that exists now** — not the per-model baselines in
+  `results/`, not the numbers in ROADMAP.md, not upstream's leaderboard.
 - `jobs/`: Stores the results of benchmark runs.
 - `scripts/`: Checks that run outside a benchmark run — task schema lint, post-run audit.
 - `site/`: A Next.js application to visualize benchmark results.
@@ -86,8 +91,8 @@ bootstrap commit, plus the id of the last operation the bootstrap performed. Har
 mounts the whole `tests/` directory read-only at `/tests`, so the anchor arrives beside
 the verifier for free, exactly like `vacuity_floor.json` — nothing is added to the image,
 and no copy exists inside the container for an agent to rewrite. `tests/conftest.py`
-turns it into a session-scoped `autouse` fixture, so all 53 tasks get the check without
-53 edits, and when it fails every test in the file fails and the trial scores 0.
+turns it into a session-scoped `autouse` fixture, so every task gets the check without a
+per-task edit, and when it fails every test in the file fails and the trial scores 0.
 
 **Why change ids and not commit ids.** A jj change id is generated *randomly* when a
 commit is created and is *preserved* by a genuine `rebase`, `squash`, `describe`,
@@ -130,13 +135,16 @@ the reward is `0`, and a `ctrf.json` was written — the CI vacuity check plus t
 end to end.
 
 **A missing anchor abstains, it does not fail.** `tests/anchor.py` prints why and passes
-when the file is absent, unparseable, or records `anchored: false` — the last being the
-four tasks whose bootstrap ships no jj repository, where creating it *is* the task
-(`git_remote_add`, `template_formatting`, `working_copy_as_commit`, and — measured, not
-inferred — `git_integration`, whose bootstrap ships only a bare git repo). An anchor
-that is not there is an infrastructure condition, and a rollout in which one missing file
-zeroes every trial is worse than the vulnerability it closes. `--check` and
-`--verify-untouched` are what make that loud, on the host, where it can be fixed.
+when the file is absent, unparseable, or records `anchored: false`. That last case is for
+a task whose bootstrap ships **no** jj repository, because creating it *is* the task; the
+four tasks that were in that state (`git_remote_add`, `template_formatting`,
+`working_copy_as_commit`, and `git_integration`, whose bootstrap shipped only a bare git
+repo) were all cut when the suite was reduced to 14, so **every current task hands over a
+real jj repository and every one of them is anchored.** The code path stays, because the
+next task authored against a bare directory needs it. An anchor that is not there is an
+infrastructure condition, and a rollout in which one missing file zeroes every trial is
+worse than the vulnerability it closes. `--check` and `--verify-untouched` are what make
+that loud, on the host, where it can be fixed.
 
 ### Commits a task is *allowed* to remove: `tests/anchor_exemptions.json`
 
@@ -151,7 +159,8 @@ auto-abandon it; `jj workspace forget` removes that workspace's working copy; an
 
 So `abandon_commits` is two abandons, `squash_range`'s own
 `test_fix_commits_are_no_longer_visible` **asserts** those ids are gone, and
-`next_prev_navigation` is entirely about walking the working copy off an empty commit.
+`rebase_branch` and `split_commit_interactive` both hand over an empty undescribed `@`
+that the solve has to `jj edit` off, which auto-abandons it.
 
 The escape hatch is a per-task, hand-written, committed file —
 `tasks/<task>/tests/anchor_exemptions.json` — that names each such commit **with a
@@ -173,12 +182,13 @@ An entry names its commit by `description` (the same key `anchored_change_id()` 
 by `working_copy` (a workspace *name*, for an undescribed working-copy commit). An
 exempted change id may be absent **or** present; nothing else about the anchor is
 relaxed, and **the handover-operation check is never exempted on any task**, so
-wipe-and-rebuild is still caught everywhere. `may_be_divergent` is the separate flag for
-`concurrent_operations`, whose instruction deliberately makes one change divergent partway
-through.
+wipe-and-rebuild is still caught everywhere. `may_be_divergent` is the separate flag for a
+task whose solve deliberately leaves one change divergent. No current task uses it —
+`concurrent_operations`, the task it was written for, was cut when the suite was reduced
+to 14 — but the divergence-shaped tasks on the roadmap will, so the schema keeps it.
 
 The file is optional — absent means "nothing this task asks for removes a bootstrap
-commit", which is true of 39 of the 53 tasks. `scripts/lint_tasks.py` enforces the schema
+commit", which is true of 8 of the 14 tasks. `scripts/lint_tasks.py` enforces the schema
 and prints every exemption and its reason on every CI run; `scripts/bootstrap_anchor.py
 --write/--check` cross-checks each entry against the measured bootstrap, so an entry that
 names nothing (or two things) fails on the host. A stale exemption file makes
@@ -229,9 +239,8 @@ identity claim was **not** made. The assertion is then exactly as strong as it w
 the anchor existed — never weaker, and never an error.
 
 `working_copy_or_fallback` exists because anchor keys are description *first lines*, and
-`""` is not a unique key: `workspace_forget`'s bootstrap holds two commits described `""`,
-`resolve_tool`'s holds three, and `restore_file_from_parent`'s, `stacking_changes`' and
-`workspace_update_stale`'s hold two each. The anchor therefore records the handover `@` of
+`""` is not a unique key: `workspace_update_stale`'s bootstrap holds two commits described
+`""`, and before the cut to 14 there were bootstraps holding three. The anchor therefore records the handover `@` of
 every workspace under a reserved `working_copies` key, addressed by workspace name.
 `anchored_change_id("")` **fails loudly** on an ambiguous description and points at that
 key rather than silently picking one of the candidates.
@@ -252,12 +261,12 @@ assertions to address the graded commit by its anchored change id, for which
 `tests/anchor.py` exposes `anchored_change_id(description)` (through
 `change_id_or_fallback`, per the idiom above).
 
-Two smaller residuals, stated rather than hidden. On the 10 tasks whose handover working
-copy is exempt, that one empty undescribed commit is no longer evidence — it carries no
-content, and jj discards it silently on any `jj new`/`jj edit`, so requiring it would fail
-honest solves. And on the ~7 tasks whose only bootstrap commit *is* an empty undescribed
-working copy (`describe_commit`, `new_commit`, `workspace_add`, `log_template_author`,
-`template_customize_log_output`, `workspace_root`, `bookmark_create_and_move`) it is
+Two smaller residuals, stated rather than hidden. On the 4 tasks whose handover working
+copy is exempt (`absorb_changes`, `operation_recovery`, `rebase_branch`,
+`split_commit_interactive`), that one empty undescribed commit is no longer evidence — it
+carries no content, and jj discards it silently on any `jj new`/`jj edit`, so requiring it
+would fail honest solves. And on the 2 tasks whose only bootstrap commit *is* an empty
+undescribed working copy (`workspace_add`, `template_customize_log_output`) it is
 deliberately **not** exempt, because it is the graded object — with the consequence that an
 agent who solves such a task by creating a *new* commit instead of describing the one it
 was handed now scores 0. That is a scoring-shape change, and it is intended.

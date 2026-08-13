@@ -383,10 +383,20 @@ def test_feature_bookmark_still_points_at_the_target():
     Bookmarks follow rewritten commits, so a squash leaves `feature` exactly
     where it was. It used to be asserted that way -- equality with the target --
     which is the one assertion in this file that no bullet of the request ever
-    licensed: the instruction does not mention a bookmark at all. It is floored,
-    so it earns nothing, and per tests/test.sh a failing floored test still caps
-    the trial below a full mark; an agent penalised here would be penalised for
-    a requirement it was never given.
+    licensed: the instruction does not mention a bookmark at all. An agent
+    penalised here would be penalised for a requirement it was never given.
+
+    The reason that matters has changed since this relaxation was made, and the
+    earlier version of this docstring now argues from a false premise. It said
+    "it is floored, so it earns nothing, and per tests/test.sh a failing floored
+    test still caps the trial below a full mark". This test is no longer
+    floored: after the floor was re-measured against the untouched image,
+    `tests/vacuity_floor.json` reads 8 tests / 0 floor, so every test in this
+    file is SCORED and a failure here costs a real eighth of the mark outright
+    rather than merely capping a trial that would otherwise be full. The
+    over-strict version was therefore more expensive than the old reasoning
+    made it sound, which strengthens the case for the relaxation rather than
+    weakening it.
 
     Relaxed to `feature` pointing at the target OR at an ancestor of it. That
     still rejects the failure this is here for -- a bookmark dragged forward

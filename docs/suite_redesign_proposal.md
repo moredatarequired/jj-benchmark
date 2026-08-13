@@ -1,5 +1,33 @@
 # Suite redesign: cut to 24 tasks, ten of them new
 
+> **STATUS: the cut half of this proposal has been executed. `tasks/` now holds 14
+> directories, not 53.** Hugh approved the shipping-14 list in §5 and additionally
+> dropped the seven-task smoke tier this document parks there — "I don't know that we
+> really need to keep a smoke tier" — so all 39 non-shipping tasks were deleted in one
+> commit: the 26 in §3's cut table, the 6 in its merge table, and the 7 §5 demotes. The
+> "build 10 new" half is **not** done; the target of 24 stands, to be reached by
+> authoring on top of the 14.
+>
+> Everything below is left as it was written, which means it reads as a proposal about a
+> 53-task suite and cites `tasks/<name>/...` paths for tasks that no longer exist. Those
+> citations still resolve at commit `73854f0b`, the last commit before the cut — the two
+> the document itself flags as reference text for future work are
+> `git show 73854f0b:tasks/git_import/tests/test_final_state.py` (the R3 docstring, §3's
+> merge table) and `git show 73854f0b:tasks/concurrent_operations/tests/test_final_state.py`
+> (the `change_id(X)`-on-a-divergent-change idiom, §4.0.2 #2, and the structural half N8
+> is a re-scope of).
+>
+> Two things the cut did *not* do, both deliberately left for the new-task work and
+> recorded here so they are not lost: `workspace_forget`'s add → list → forget lifecycle
+> was not folded into `workspace_add` (it needs a second workspace in the fixture and a
+> rewritten prompt — a new task, not an assertion), and `log_template_author`'s
+> author-templating surface (`author.name()` / `author.email()`) was not folded into
+> `template_customize_log_output` (its instruction specifies a template that has no
+> author field in it; changing that changes the task). The suite now has **no bookmark
+> task at all** — `bookmark_create_and_move`, `bookmark_rename`, `bookmark_push` and
+> `bookmark_delete` all went — so `jj bookmark` survives only incidentally, inside
+> `git_fetch_remote`'s fixture and `abandon_commits`' assertions.
+
 **Recommendation.** Cut 24 of the 53 tasks outright, fold 7 into survivors, and keep 22.
 Of those 22, only 14 belong in the shipping suite; the other 8 are structurally sound but
 produced no separation across three model tiers. Build 10 new tasks against capabilities

@@ -31,6 +31,12 @@ PROTECTED = (
 )
 
 
+# Exactly what environment/Dockerfile writes into `add the charge endpoint`,
+# byte for byte. The same six lines in the same order ship in all four fixtures
+# of this task set.
+GITIGNORE = "__pycache__/\n*.pyc\n.pytest_cache/\n*~\n*.swp\n*.swo\n"
+EARLIEST = "add the charge endpoint"
+
 def jj(*args):
     return subprocess.run(
         ["jj", *args], cwd=PROJECT_DIR, capture_output=True, text=True
@@ -185,3 +191,48 @@ def test_each_stack_commit_changes_its_own_paths():
             f"`{description}` should change {sorted(paths)}; it changes "
             f"{sorted(changed)}"
         )
+
+
+def test_the_gitignore_is_in_force_from_the_earliest_commit():
+    """The .gitignore's PLACEMENT is load-bearing, so it is checked, not trusted.
+
+    jj 0.44 auto-tracks new files. With no ignore in force, a `__pycache__`
+    .pyc from running the project's own tests -- or a `charge.py~` an editor
+    left beside a file the agent read -- joins whatever commit `@` is sitting
+    on and is then graded as work. Measured on this image before the file
+    existed, that cost an otherwise perfect solve 0.667.
+
+    `add the charge endpoint` is the only commit below every path-set assertion
+    in tests/test_final_state.py and an ancestor of every head in the
+    repository, so committing the .gitignore there is what puts it in force
+    everywhere the grading looks. Moving it even one commit later would not
+    fail a verifier loudly -- it would change what
+    `test_the_stack_is_still_the_same_four_commits`, a FLOORED test, sees on an
+    untouched image, and so surface as a shifted vacuity floor, which is a much
+    harder thing to read back to a cause. So it is asserted here instead, in
+    three steps, in the order they can break: the earliest commit is the one we
+    think it is; every other commit descends from it; and it carries this exact
+    .gitignore.
+    """
+    earliest = lines("log", "-r", "roots(all() ~ root())", "--no-graph",
+                     "-T", 'description.first_line() ++ "\\n"')
+    assert earliest == [EARLIEST], (
+        f"Expected exactly one earliest commit, `{EARLIEST}`; the roots of this "
+        f"repository are {earliest}. The .gitignore rides on that commit."
+    )
+    uncovered = lines("log", "-r",
+                      "all() ~ root() ~ descendants(roots(all() ~ root()))",
+                      "--no-graph", "-T", 'description.first_line() ++ "\\n"')
+    assert uncovered == [], (
+        f"{uncovered} do not descend from `{EARLIEST}`, so the .gitignore "
+        "committed there is not in force for them."
+    )
+    shown = jj("file", "show", "-r", "roots(all() ~ root())", ".gitignore")
+    assert shown.returncode == 0, (
+        f"`{EARLIEST}` has no .gitignore in its tree: {shown.stderr}. If it was "
+        "moved to a later commit, move it back -- see environment/Dockerfile."
+    )
+    assert shown.stdout == GITIGNORE, (
+        f"The .gitignore in `{EARLIEST}` is {shown.stdout!r}; this fixture "
+        f"ships {GITIGNORE!r}, identical across all four tasks in this set."
+    )

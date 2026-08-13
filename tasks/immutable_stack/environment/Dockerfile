@@ -114,6 +114,42 @@ cat >CHANGELOG.md <<'F'
 ## Unreleased
 - charge endpoint
 F
+# A real Python project ships one of these, and this fixture needs it because jj
+# 0.44 AUTO-TRACKS new files. Measured on this image before the file existed: a
+# perfect solve that also imported a project module while `@` was on the stack
+# tip scored 0.667, because the resulting
+# `src/client/__pycache__/retry.cpython-312.pyc` landed in `note the nonce work
+# in the changelog` -- which the floored
+# `test_the_stack_is_still_the_same_four_commits` grades by path set.
+#
+# This fixture ships no test file, so its pytest exposure is the weakest of the
+# four; it is closed the same way as the others because the cost is a six-line
+# file that a real project has anyway. Editor leftovers are NOT weaker here: a
+# `src/client/retry.py~` or a vim swap file left next to a file the agent read
+# auto-tracks into whatever `@` is sitting on, with no test run needed at all.
+# Measured on the sibling fixtures in this set, an otherwise perfect solve that
+# left a `~` backup scored 0.667.
+#
+# `__pycache__/` and `*~` are the load-bearing lines here; `*.pyc` covers the
+# bytecode `python3 -m compileall -b` writes beside the source instead of into
+# `__pycache__/`, and `*.swp`/`*.swo` cover vim. `.pytest_cache/` writes its own
+# `.gitignore` containing `*` and so already ignores itself; nothing rests on it.
+#
+# THE SIX LINES AND THEIR ORDER ARE SHARED with the other three fixtures in
+# this task set. Keep them identical; there is nothing task-specific here.
+cat >.gitignore <<'F'
+__pycache__/
+*.pyc
+.pytest_cache/
+*~
+*.swp
+*.swo
+F
+# THE PLACEMENT IS LOAD-BEARING, not just tidy: `add the charge endpoint` is the
+# only commit below every path-set assertion in the verifier, so the .gitignore
+# is in force everywhere the grading looks. bootstrap/test_initial_state.py
+# asserts the file is present in this commit's tree so that a move fails loudly
+# in the bootstrap check rather than quietly in the verifier.
 jj commit -m "add the charge endpoint"
 
 cat >src/api/handlers.py <<'F'

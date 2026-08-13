@@ -100,6 +100,55 @@ cat >CHANGELOG.md <<'F'
 ## 2.4
 - charge endpoint
 F
+# A real Python project ships one of these, and this fixture needs it for a
+# reason that has nothing to do with realism: jj 0.44 AUTO-TRACKS new files, so
+# without it the project's own tests cannot be run without changing the answer.
+# Measured on this image before the file existed:
+#
+#   * a perfect copy that parked `@` on the release line and ran the tests
+#     scored 0.000 -- pytest wrote a .pyc, `@` became non-empty, so it stopped
+#     being a JUST_LOOKING commit and counted as a FOURTH copy, failing all
+#     three scored tests;
+#   * running the tests WITHOUT moving `@` scored 0.667 -- the .pyc landed in
+#     `sketch the refund endpoint`, which the floored no-collateral-damage test
+#     grades by path set.
+#
+# Editor leftovers are the same exposure and were measured the same way, on
+# this image with only `__pycache__/` and `.pytest_cache/` ignored:
+#
+#   * a perfect copy that also left `src/api/charge.py~` next to the file it
+#     read scored 0.667, and a vim swap file (`src/api/.charge.py.swp`) scored
+#     0.667 -- both landed in `sketch the refund endpoint`;
+#   * a perfect copy that parked `@` on the release line and left the same
+#     `charge.py~` there scored 0.000, for the same reason pytest did: the
+#     backup made `@` non-empty, so it counted as a FOURTH copy.
+#
+# `__pycache__/` and `*~` are the load-bearing lines here; `*.pyc` covers the
+# bytecode `python3 -m compileall -b` writes beside the source instead of into
+# `__pycache__/`, and `*.swp`/`*.swo` cover vim. `.pytest_cache/` writes its own
+# `.gitignore` containing `*` and so already ignores itself (measured: it never
+# appears in `jj status`); it is listed for the same reason a real project lists
+# it, and nothing rests on it.
+#
+# THE SIX LINES AND THEIR ORDER ARE SHARED with the other three fixtures in
+# this task set. Keep them identical; there is nothing task-specific here.
+cat >.gitignore <<'F'
+__pycache__/
+*.pyc
+.pytest_cache/
+*~
+*.swp
+*.swo
+F
+# THE PLACEMENT IS LOAD-BEARING, not just tidy. `add the charge endpoint` is the
+# only commit below every path-set assertion in the verifier and an ancestor of
+# both `main` and `release/2.4`, so the .gitignore is in force everywhere the
+# grading looks. Moving it one commit later would leave the fork point
+# unprotected and break `test_nothing_else_in_the_repository_moved` -- which is
+# this task's FLOORED test, so the breakage would show up as a changed vacuity
+# floor rather than as a failing verifier. bootstrap/test_initial_state.py
+# asserts the file is present in this commit's tree so that a move fails loudly
+# in the bootstrap check instead.
 jj commit -m "add the charge endpoint"
 
 cat >src/api/handlers.py <<'F'

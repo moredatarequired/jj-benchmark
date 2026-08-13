@@ -120,6 +120,45 @@ cat >CHANGELOG.md <<'F'
 ## Unreleased
 - charge endpoint
 F
+# A real Python project ships one of these, and this fixture needs it more than
+# any of the four: jj 0.44 AUTO-TRACKS new files, the top commit here is
+# literally `add tests for the token bucket`, and tests/test_limits.py actually
+# passes -- so running it is the obvious thing to do before pushing. Measured on
+# this image before the file existed, a perfect solve that ran the tests first
+# scored 0.667: `tests/__pycache__/...pyc` and
+# `src/client/__pycache__/limits...pyc` were folded into `add tests for the
+# token bucket`, which the floored `test_nothing_else_was_published_or_rewritten`
+# grades by path set -- and, being the tip, they were then published to origin
+# as well.
+#
+# Editor leftovers reach origin exactly the same way, and were measured the
+# same way on this image with only `__pycache__/` and `.pytest_cache/` ignored:
+# an otherwise perfect solve that left `src/api/charge.py~` next to the file it
+# read scored 0.667, and one that left a vim swap file (`src/client/.limits.py.swp`)
+# scored 0.667 -- and in both cases `git ls-tree -r refs/heads/rate-limit` in
+# the bare origin afterwards LISTED the leftover, so the junk was published.
+#
+# `__pycache__/` and `*~` are the load-bearing lines here; `*.pyc` covers the
+# bytecode `python3 -m compileall -b` writes beside the source instead of into
+# `__pycache__/`, and `*.swp`/`*.swo` cover vim. `.pytest_cache/` writes its own
+# `.gitignore` containing `*` and so already ignores itself; nothing rests on it.
+#
+# THE SIX LINES AND THEIR ORDER ARE SHARED with the other three fixtures in
+# this task set. Keep them identical; there is nothing task-specific here.
+cat >.gitignore <<'F'
+__pycache__/
+*.pyc
+.pytest_cache/
+*~
+*.swp
+*.swo
+F
+# THE PLACEMENT IS LOAD-BEARING, not just tidy: `add the charge endpoint` is the
+# only commit below every path-set assertion in the verifier and below both
+# bookmarks, so the .gitignore is in force everywhere the grading looks -- and
+# everywhere a push could carry junk to origin. bootstrap/test_initial_state.py
+# asserts the file is present in this commit's tree so that a move fails loudly
+# in the bootstrap check rather than quietly in the verifier.
 jj commit -m "add the charge endpoint"
 
 cat >src/api/handlers.py <<'F'

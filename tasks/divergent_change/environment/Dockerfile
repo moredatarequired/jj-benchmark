@@ -125,6 +125,43 @@ cat >CHANGELOG.md <<'F'
 ## Unreleased
 - charge endpoint
 F
+# A real Python project ships one of these, and this fixture needs it because jj
+# 0.44 AUTO-TRACKS new files. Measured on this image before the file existed: a
+# perfect solve that also imported a project module while `@` was on the
+# handover commit scored 0.667, because the resulting
+# `src/api/__pycache__/charge.cpython-312.pyc` landed in `start the rate-limit
+# middleware` -- which the floored no-collateral-damage test grades by path set.
+# Note that the import does not have to SUCCEED: CPython writes the bytecode
+# cache after compiling and before executing, so the failing
+# `import api.charge` (there is no `client.http` here) leaves the .pyc anyway.
+#
+# Editor leftovers are the same exposure: a `src/api/charge.py~` or a vim swap
+# file left next to a file the agent read auto-tracks into whatever `@` is
+# sitting on, and lands in the same path-set assertion the .pyc did. Measured
+# on the sibling fixtures in this set, an otherwise perfect solve that left a
+# `~` backup scored 0.667.
+#
+# `__pycache__/` and `*~` are the load-bearing lines here; `*.pyc` covers the
+# bytecode `python3 -m compileall -b` writes beside the source instead of into
+# `__pycache__/`, and `*.swp`/`*.swo` cover vim. `.pytest_cache/` writes its own
+# `.gitignore` containing `*` and so already ignores itself; it is listed for
+# the same reason a real project lists it, and nothing rests on it.
+#
+# THE SIX LINES AND THEIR ORDER ARE SHARED with the other three fixtures in
+# this task set. Keep them identical; there is nothing task-specific here.
+cat >.gitignore <<'F'
+__pycache__/
+*.pyc
+.pytest_cache/
+*~
+*.swp
+*.swo
+F
+# THE PLACEMENT IS LOAD-BEARING, not just tidy: `add the charge endpoint` is the
+# only commit below every path-set assertion in the verifier, so the .gitignore
+# is in force everywhere the grading looks. bootstrap/test_initial_state.py
+# asserts the file is present in this commit's tree so that a move fails loudly
+# in the bootstrap check rather than quietly in the verifier.
 jj commit -m "add the charge endpoint"
 
 cat >src/api/handlers.py <<'F'

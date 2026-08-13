@@ -18,6 +18,9 @@ You can view the upstream evaluation reports at [tabbyml.github.io/jj-benchmark]
 - `jobs/`: Stores the results of benchmark runs.
 - `scripts/`: Checks that run outside a benchmark run — task schema lint, post-run audit.
 - `site/`: A Next.js application to visualize benchmark results.
+- `docs/`: Longer-form write-ups. [`docs/known_limitations.md`](docs/known_limitations.md)
+  records the known limitations in the integrity and floor machinery, and the decision
+  taken on each.
 
 ## Contribution
 

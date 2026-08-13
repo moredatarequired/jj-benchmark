@@ -27,6 +27,15 @@ matched to their sources by what they change and by the content they leave
 behind. No copy is ever looked up by its description, which is agent-writable
 text and would make a hand-typed log entry indistinguishable from the work.
 
+Structural identification has one edge the other tasks do not have: it counts
+whatever is sitting there, and an EMPTY, UNDESCRIBED commit is not an answer to
+anything. `jj new <the top copy>` -- looking at the result, or just where an
+agent's session happened to end -- left a fourth commit above the copies, and
+with it every one of the three scored tests failed a perfect solve. JUST_LOOKING
+below is the predicate that excludes exactly those and nothing else; see the
+comment on it for why the predicate is "empty AND undescribed" rather than
+"the working copy".
+
 WRITTEN AGAINST AN OBSERVED END STATE (R7)
 ==========================================
 
@@ -65,9 +74,24 @@ Three things those runs showed, each of which changed an assertion here:
     Each original is now restricted to main's own ancestry, which a copy on the
     release branch is not in. See ONLY_ON_MAIN below.
 
-  * `description(exact:"...")` DOES NOT MATCH. jj descriptions carry a trailing
-    newline, so the exact: form silently matches nothing. Every fallback revset
-    below uses substring:.
+  * `description(exact:"...")` DOES NOT MATCH A DESCRIBED COMMIT. jj
+    descriptions carry a trailing newline, so the exact: form silently matches
+    nothing. Every fallback revset below uses substring:. The one exception is
+    `description(exact:"")` in JUST_LOOKING, which is not a description lookup
+    at all: an undescribed commit's description is the empty string with no
+    newline to trip over, and that form is measured to match exactly the
+    undescribed commits and no described one.
+
+  * A TRAILING `jj new` SCORED 0 ON A PERFECT COPY, and it was a reviewer, not
+    the fixture, that produced it. `jj duplicate ... --onto release/2.4`
+    followed by `jj new <the top copy>` -- an empty, undescribed working copy
+    made only to look at the result -- put a fourth commit in
+    `descendants(<release tip>)`, so all three scored tests failed and the
+    reward was 0.000. The exclusion of JUST_LOOKING commits below is that fix,
+    and it is the narrowest one available: an extra commit that CARRIES CONTENT
+    on the release line is still a wrong answer and still fails (measured), as
+    is an empty commit that has been described, which is an agent asserting
+    something rather than looking at it.
 """
 
 import subprocess
@@ -136,6 +160,36 @@ def jj_ok(*args):
 # run reaches it.
 ANCESTRY_OF_MAIN_TIP = '::description(substring:"start the 2.5 changelog")'
 ONLY_ON_MAIN = set(RUN) | {BELOW_THE_RUN, MAIN_TIP}
+
+# A commit that is EMPTY AND UNDESCRIBED, which is what "just looking" leaves
+# behind. `jj new <anything>` creates one, and it is the shape of a working copy
+# that has been placed somewhere to read the result rather than to say anything
+# about it: no content, no claim. The copies are identified structurally -- as
+# whatever descends from the release tip -- so without this predicate such a
+# commit counts as a fourth copy and fails a perfect solve. It was measured at
+# reward 0.000 that way.
+#
+# WHY THIS PREDICATE AND NOT "THE WORKING COPY". Exempting `@` would say that
+# the last place the agent's cursor happens to rest is never graded, which is
+# both too wide and too narrow. Too wide: `jj commit` on the release line leaves
+# real content behind and moves `@` past it, and that IS a wrong answer -- the
+# request was for three copies, not four commits. Too narrow: an agent that
+# looks at the result and then moves on leaves the empty commit behind while `@`
+# is elsewhere, and the same perfect solve would still score 0. "Empty and
+# undescribed" describes the thing itself rather than where the cursor stopped,
+# and it is the only shape that cannot encode an answer:
+#
+#   * empty but DESCRIBED  -> graded. A description is the agent asserting
+#     something; `jj new -m "copy of ..."` offered as a copy must fail.
+#   * described or not, NOT EMPTY -> graded. Content on the release line is
+#     work, whoever put it there. Measured below as the content-bearing extra
+#     commit, which still fails.
+#
+# Note that every read in this file happens after snapshot_working_copy(), so a
+# solve that wrote files without committing them has already had those files
+# folded into `@` by the time this predicate runs: a working copy with content
+# in it is not empty and is not excluded.
+JUST_LOOKING = 'empty() & description(exact:"")'
 
 
 def graded(description):
@@ -206,6 +260,21 @@ def describe(cids):
     return "; ".join(line for line in out.splitlines() if line)
 
 
+def effective_parent(change_id):
+    """The commit ids `change_id` sits on, looking THROUGH just-looking commits.
+
+    Plain parent links would put an excluded commit in the middle of the chain
+    and break the walk below at it: `jj new release/2.4` followed by a copy
+    `--onto @` leaves an empty, undescribed commit UNDER the copies, and the
+    copies are still a correct answer. So the parent asked for here is the
+    nearest ancestor that is not a just-looking commit, which for every ordinary
+    commit is exactly its parent.
+    """
+    revset = "heads(::change_id({cid}) ~ change_id({cid}) ~ ({ignore}))".format(
+        cid=change_id, ignore=JUST_LOOKING)
+    return field(revset, "commit_id")
+
+
 def copies_in_order():
     """The commits that descend from the anchored release tip, oldest first.
 
@@ -213,14 +282,20 @@ def copies_in_order():
     image. The chain is walked by parent rather than trusting jj's log order,
     because "in the same order" is one of the two things being graded and a
     topological listing would let a wrong order pass.
+
+    JUST_LOOKING commits are not counted and not walked. See the comment on that
+    predicate: an empty, undescribed commit is not an answer to anything, and
+    counting the one `jj new` leaves behind failed perfect solves outright.
+    Anything with content in it, or with a description on it, is still counted
+    here and still fails the "exactly three" assertion below.
     """
     snapshot_working_copy()
     base = resolve_one(RELEASE_TIP)
     added = set(change_ids(
-        f"descendants(change_id({base})) ~ change_id({base})"))
+        f"descendants(change_id({base})) ~ change_id({base}) ~ ({JUST_LOOKING})"))
     by_parent = {}
     for cid in added:
-        for parent in parents_of(cid):
+        for parent in effective_parent(cid):
             by_parent.setdefault(parent, []).append(cid)
     ordered = []
     current = commit_id_of(base)

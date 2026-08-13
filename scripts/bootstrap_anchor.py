@@ -501,7 +501,22 @@ def all_tasks() -> list[str]:
 
 
 def validate(task: str, raw: dict) -> None:
-    """Reject a measurement that could not do its job, loudly."""
+    """Reject a measurement that could not do its job, loudly.
+
+    WHERE THE DUPLICATE-CHANGE-ID CHECK WENT. The repeated-change-id branch
+    below can no longer fire on any real repository: capture() collapses a
+    change id carrying several visible commits into one entry, so a fixture that
+    ships a divergence -- or one that grows an accidental divergence later --
+    produces a single entry here and reaches this function looking well formed.
+    It is kept as an assertion about capture() itself, not about the fixture.
+    The question it used to answer for a fixture ("is anything in the bootstrap
+    state divergent, and was that meant?") is now answered one step later, by
+    tests/anchor.py at --verify-untouched: an anchored change id resolving to
+    more than one visible commit is a violation there unless the task's
+    tests/anchor_exemptions.json lists it as `may_be_divergent`. So an
+    accidentally divergent fixture fails the pre-flight rather than the
+    measurement, and it fails it by name.
+    """
     for repo in raw["repos"]:
         if not repo["commits"]:
             raise MeasureError(

@@ -49,7 +49,7 @@ RUN mkdir -p /home/user/myproject && \
     jj rebase -r default@ -d @
 
 # Container contents:
-#   - jj v0.38.0 installed.
+#   - jj v0.44.0 installed.
 #   - /home/user/myproject  - jj repository (stale workspace)
 #   - /home/user/workspace_b - another workspace that modified the repo
 #   - config.json in workspace_b with {"status": "pending", "new": true}

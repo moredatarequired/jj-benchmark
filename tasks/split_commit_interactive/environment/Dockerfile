@@ -24,7 +24,7 @@ RUN apt-get update && \
           pytest==8.4.1 pytest-json-ctrf==0.3.5 )
 
 RUN curl -fsSL \
-        https://github.com/jj-vcs/jj/releases/download/v0.38.0/jj-v0.38.0-x86_64-unknown-linux-musl.tar.gz | \
+        https://github.com/jj-vcs/jj/releases/download/v0.44.0/jj-v0.44.0-x86_64-unknown-linux-musl.tar.gz | \
         tar -xz -C /usr/local/bin ./jj && \
     chmod +x /usr/local/bin/jj
 

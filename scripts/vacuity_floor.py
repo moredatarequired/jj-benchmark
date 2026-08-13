@@ -58,7 +58,7 @@ before its body runs, and the report says 0 passed. Recording that is not a
 conservative mistake: a floor that is too LOW shrinks the scored denominator and
 makes the task read harder than it is.
 
-So three refusals, each of which fails the task loudly rather than writing a
+So four refusals, each of which fails the task loudly rather than writing a
 file (``--write``) or comparing against one (``--check``):
 
   * an anchor file is present in the tests/ directory about to be measured.
@@ -68,9 +68,24 @@ file (``--write``) or comparing against one (``--check``):
     anchor left out; the tree is never modified either way.
   * the CTRF report carries the BOOTSTRAP_ANCHOR_VIOLATION token -- the direct
     evidence that the anchor, not the verifier, decided this run.
-  * every test in the report errored during setup, which is the general case:
-    a broken session fixture or a failing module import zeroes a run the same
-    way, and none of them are evidence about what passes with no agent.
+  * ANY test in the report errored during setup, which is the general case:
+    any fixture those tests request can stop a body running the same way the
+    anchor fixture does, and a body that did not run is not evidence about what
+    passes with no agent. (A failing module import does NOT arrive here: it is
+    a collection error, so the report lists no tests at all and the "0 tests"
+    check in read_ctrf rejects it first.) The threshold is one, not all. A test
+    that never executed is recorded exactly like one that ran and failed -- it
+    stays out of passes_without_agent -- so 7 of 8 erroring would have written
+    a floor of 1/8 and quietly scored the task out of seven assertions it does
+    not have. A partial wreck is a wreck; there is no fraction of non-executing
+    tests that makes the remainder a measurement of the floor.
+  * EVERY test in the report was SKIPPED, so no body ran at all. One skip among
+    several is a decision the verifier made on purpose and leaves the rest a
+    real measurement, which is why this one is phrased on all rather than any.
+    A run that skipped the whole file is the squash_range wreck in different
+    dress: a skipped test is recorded exactly like a failing one, absent from
+    passes_without_agent, so the run reads as a floor of 0 -- and floor 0 out of
+    8 clears the audit below, which only catches a floor that is too HIGH.
 
 Pure stdlib. Requires a working docker daemon only when --ctrf is not given.
 
@@ -158,14 +173,27 @@ def errored_in_setup(test: dict) -> bool:
     written by the second report, while a test that failed in setup -- the only
     report it ever produces -- ends up with no raw_status at all.
 
-    Read only in the aggregate below, never per test: a skipped test also has no
-    raw_status, and "every test in the run" is the condition that matters.
+    "No raw_status" alone is therefore not enough, because a SKIPPED test also
+    produces one report and also ends up without one. A skip is a decision the
+    verifier made on purpose and says something real ("not applicable here"), so
+    it is excluded by status: only an entry that is neither passed nor skipped
+    and carries no raw_status is a body that never ran. This predicate is read
+    per test now -- untrustworthy() refuses on the FIRST one, not only when
+    every test in the run errored -- so getting the skip case wrong here would
+    refuse a perfectly good measurement.
     """
-    return test.get("status") != "passed" and not test.get("raw_status")
+    if test.get("status") in ("passed", "skipped", "pending"):
+        return False
+    return not test.get("raw_status")
 
 
 def first_trace_line(tests: list[dict]) -> str:
     """The one line out of the report that names the real cause.
+
+    Given only the entries the refusal is about -- the anchored ones, the ones
+    that errored -- never the whole report: a test that ran and failed on its
+    own merits carries a trace too, and if it is listed first, quoting it points
+    the diagnostic at a healthy part of the run instead of at the wreck.
 
     pytest prefixes the raised exception with "E " in a longrepr, so the first
     such line is the exception itself ("AssertionError: BOOTSTRAP_ANCHOR_
@@ -184,11 +212,22 @@ def first_trace_line(tests: list[dict]) -> str:
 def untrustworthy(path: Path, tests: list[dict]) -> str | None:
     """Why this report is not a measurement of the floor, or None if it is.
 
-    Both conditions describe a run in which the verifier never got to express an
-    opinion. Recording either as "nothing passes with no agent" writes a floor
-    of 0 that is too low, and a floor that is too low is not the safe direction:
-    tests/test.sh drops floored names from both sides of its fraction, so the
-    task silently gets scored out of fewer assertions than it has.
+    The first two conditions describe tests the verifier never got to express an
+    opinion about, and both are phrased on ANY test rather than on all of them.
+    That matters: a test that did not execute is written down the same way as one
+    that ran and failed -- absent from passes_without_agent -- so even one of
+    them drags the floor DOWN, and too low is not the safe direction. tests/test.sh
+    drops floored names from both sides of its fraction, so a floor that is too
+    low silently scores the task out of more assertions than it really has, for
+    every model. Refusing the whole report is right even when most of it ran:
+    the tests that did run are still a fine measurement of themselves, but the
+    FLOOR is a property of the whole file and cannot be assembled from a subset.
+
+    The third condition is the one shape a skip can take that is not a decision
+    worth trusting, and it is phrased on EVERY test for the reason the other two
+    are not: a skip says something real about the tests around it, so a report
+    with some skips still measures its file, and only a report with nothing but
+    skips measures nothing at all.
     """
     anchored = [test for test in tests if VIOLATION_TOKEN in (test.get("trace") or "")]
     if anchored:
@@ -208,20 +247,40 @@ def untrustworthy(path: Path, tests: list[dict]) -> str | None:
             "scripts/bootstrap_anchor.py --write before your next sweep), or "
             "re-run with --ignore-anchors, which measures against a staged copy "
             "of tests/ that leaves the anchor out.\n"
-            f"    first trace line: {first_trace_line(tests)}"
+            f"    first trace line: {first_trace_line(anchored)}"
         )
 
-    if tests and all(errored_in_setup(test) for test in tests):
+    errored = [test for test in tests if errored_in_setup(test)]
+    if errored:
+        return (
+            f"REFUSING TO RECORD A FLOOR FROM {path}: {len(errored)} of "
+            f"{len(tests)} test(s) errored during setup, so their bodies never "
+            "ran. A test that did not execute is not evidence that it fails on "
+            "the untouched image, and it is counted as one here: it stays out "
+            "of passes_without_agent, so the floor comes out too LOW and "
+            "tests/test.sh then scores the task out of more assertions than it "
+            "really has -- for every model. Something those tests depend on is "
+            "failing before their bodies: a fixture in tests/conftest.py, or one "
+            "in tests/test_final_state.py itself. Fix that and measure again.\n"
+            f"    first trace line: {first_trace_line(errored)}"
+        )
+
+    skipped = [test for test in tests if test.get("status") == "skipped"]
+    if skipped and len(skipped) == len(tests):
         return (
             f"REFUSING TO RECORD A FLOOR FROM {path}: all {len(tests)} test(s) "
-            "errored during setup, so not one test body ran. A run in which "
-            "nothing executed is not evidence that nothing passes on the "
-            "untouched image; recording it would set the floor to 0 and shrink "
-            "the task's scored denominator for every model. Something before "
-            "the tests is failing -- a session fixture in tests/conftest.py, or "
-            "an import in tests/test_final_state.py. Fix that and measure "
-            "again.\n"
-            f"    first trace line: {first_trace_line(tests)}"
+            "were SKIPPED, so not one body ran and the verifier said nothing "
+            "about the untouched image. A skipped test is recorded exactly like "
+            "a failing one -- it stays out of passes_without_agent -- so this "
+            "run would be written down as a floor of 0, and tests/test.sh would "
+            "then score the task out of every assertion it has, including any a "
+            "do-nothing agent already passes. (Some skips are fine: they leave "
+            "the tests that did run a real measurement, and only a run that "
+            "skipped everything measures nothing.) Something is skipping the "
+            "whole file: a module-level pytest.skip or skipif in "
+            "tests/test_final_state.py, or a fixture that opts out on this "
+            "image. Make it run on the bootstrap image and measure again.\n"
+            f"    first trace line: {first_trace_line(skipped)}"
         )
 
     return None
@@ -618,20 +677,37 @@ def main() -> int:
         if found:
             problems.setdefault(task, []).extend(found)
 
+    # Persist LAST, and only what survived both gates above. An untrustworthy
+    # report never reaches `measurements` at all (read_ctrf raises and `one`
+    # files it under `failures`), and a task whose measurement failed its audit
+    # is in `problems` -- writing that to disk would leave a floor the run is
+    # about to exit non-zero over, and the next reader has no way to tell it
+    # from a good one. The clean tasks are still written: they were measured
+    # independently, in their own container, and one broken task is no reason
+    # to throw away thirteen good measurements.
     if args.write:
         for task in sorted(measurements):
             path = floor_path(task)
+            rel = path.relative_to(REPO_ROOT)
+            record = measurements[task]
+            if task in problems:
+                if not args.quiet:
+                    print(
+                        f"  NOT writing {rel}: this measurement did not pass "
+                        "its audit (see below); the file on disk is left "
+                        "exactly as it was"
+                    )
+                continue
             path.parent.mkdir(parents=True, exist_ok=True)
-            text = serialize(measurements[task])
+            text = serialize(record)
             changed = not path.is_file() or path.read_text(encoding="utf-8") != text
-            path.write_text(text, encoding="utf-8")
+            if changed:
+                path.write_text(text, encoding="utf-8")
             if not args.quiet:
-                rel = path.relative_to(REPO_ROOT)
                 state = "wrote" if changed else "unchanged"
                 print(
                     f"  {state} {rel} "
-                    f"(floor {measurements[task]['floor']}/"
-                    f"{measurements[task]['tests']})"
+                    f"(floor {record['floor']}/{record['tests']})"
                 )
 
     if not args.quiet:

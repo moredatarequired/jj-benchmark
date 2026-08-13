@@ -102,6 +102,78 @@ jj config set --user user.email "priya@checkout.example"
 
 mkdir -p src/api src/client
 
+# A REAL PYTHON REPOSITORY SHIPS ONE, AND THIS VERIFIER IS SENSITIVE TO IT.
+# It goes into the FIRST commit so it is present at every revision the verifier
+# grades, rather than only at the tip.
+#
+# jj 0.44 auto-tracks new files: anything appearing in the working copy is
+# snapshotted into whichever commit the agent is standing on, with no `jj add`
+# and no prompt. This task's verifier compares each commit's PATH SET against
+# what it was at handover, so a stray bytecode cache is graded. MEASURED on
+# this image, without this file: a correct `jj op revert <the squash>` followed
+# by anything that imports src/api/charge.py drops from 1.000 to 0.667 on a
+# touched src/api/__pycache__/charge.cpython-312.pyc alone.
+#
+# This fixture ships no tests/ directory, so nothing here invites the stray the
+# way propagated_conflict does -- but the exposure is identical and the fix is
+# the same one, applied to all three fixtures of this branch rather than to the
+# one where it was caught.
+#
+# The list is not only bytecode. Editors are the other thing that runs during a
+# solve, and everything they leave behind auto-tracks exactly the same way --
+# measured on the propagated_conflict image, each of these cost an otherwise
+# correct solve 0.667 before the pattern covering it was added, and 1.000
+# after: an editor backup (`retry.py~`, `*~`); a vim swap file
+# (`.retry.py.swp`) and its FALLBACK spellings used when `.swp` is taken
+# (`.retry.py.swn`, both `*.sw[a-p]`); an emacs lock file (`.#retry.py`,
+# `.#*`); and an emacs autosave (`#retry.py#`, `\#*#`). The emacs lock file is
+# the one that should worry you: it appears the moment a file is OPENED for
+# editing -- no save, no test run.
+#
+# THREE THINGS HERE WERE MEASURED ON THE PINNED jj 0.44 BINARY, not assumed:
+#
+#   * `\#*#` NEEDS THE BACKSLASH. A gitignore line beginning with `#` is a
+#     COMMENT, so spelled `#*#` it is not a pattern at all -- `#foo#` came back
+#     as `A #foo#` in `jj status` while the block still LOOKED like it covered
+#     emacs autosaves. `.#*` needs no escape; it begins with a dot.
+#   * `*.sw[a-p]` IS HONOURED AND THE CLASS DOES REAL WORK: `.swp`, `.swo`,
+#     `.swn`, `.swm`, `.swa` ignored, `.swq` and `.swz` still tracked. vim
+#     rolls DOWN from `.swp` towards `.swa`, so the range covers the real
+#     fallback sequence.
+#   * IGNORE RULES DO NOT RETROACTIVELY UNTRACK -- a `#foo.py#` created before
+#     the rule existed stayed `A #foo.py#` afterwards. The file only helps
+#     against strays created after it is in place, which is why it belongs in
+#     the fixture rather than in the agent's hands.
+#
+# NO `*.pyo`, DELIBERATELY. It snapshots the same way, but CPython stopped
+# writing `.pyo` at 3.5 and this image is 3.12; a pattern for a file kind dead
+# for eight years dilutes a list whose job is to document what agents actually
+# produce.
+#
+# The seven lines cover the file kinds agents actually leave behind, which
+# closes this in practice; they are not a proof that no stray file can ever
+# reach a path-set assertion.
+#
+# WHERE THIS LINE SITS IS PART OF THE FIX. It goes into `add the charge
+# endpoint`, below every commit tests/test_final_state.py grades. The path-set
+# assertions here read their expected set live with `--at-op`, so they tolerate
+# a `.gitignore` inside a graded commit; propagated_conflict's OWN_PATHS is a
+# literal, and does not. Keep it below the graded commits in all three fixtures
+# rather than relying on which kind of assertion each one happens to use today.
+#
+# COMMITTING it is a fixture-realism choice, not a mechanism requirement: jj
+# honours the file the instant it is on disk, committed or not. It is committed
+# because a real Python repository ships one, and into the FIRST commit so it
+# is present at every revision the verifier grades rather than only at the tip.
+cat >.gitignore <<'F'
+__pycache__/
+*.pyc
+.pytest_cache/
+*~
+*.sw[a-p]
+\#*#
+.#*
+F
 cat >src/api/charge.py <<'F'
 from decimal import Decimal
 

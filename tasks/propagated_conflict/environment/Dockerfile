@@ -89,6 +89,107 @@ jj config set --user user.email "priya@checkout.example"
 
 mkdir -p src/api src/client tests
 
+# A REAL PYTHON REPOSITORY SHIPS ONE, AND THIS FIXTURE IS LOAD-BEARING ON IT.
+# It goes into the FIRST commit so it is present at every revision the verifier
+# grades, rather than only at the tip.
+#
+# jj 0.44 auto-tracks new files: anything that appears in the working copy is
+# snapshotted into whichever commit the agent is standing on, with no `jj add`
+# and no prompt. This fixture ships tests/test_retry.py, which exercises the
+# very file the conflict is in and PASSES under `PYTHONPATH=src`, so running it
+# to check the resolution is the natural next move -- and MEASURED on this
+# image, without this file, a single `PYTHONPATH=src python3 -m pytest tests/`
+# after an otherwise correct solve took the reward from 1.000 to 0.667 by two
+# independent routes:
+#
+#   * after `jj edit <origin>`, the .pyc files land in the ORIGIN commit and
+#     test_each_commit_still_carries_its_own_diff sees four paths where it
+#     wants two. That test is floored, so the fraction does not move -- the
+#     loss comes entirely through tests/test.sh's non-zero-exit cap.
+#   * after jj's own recommended `jj new; ...; jj squash`, the empty sibling
+#     `@` that squash leaves behind becomes NON-EMPTY, so it is no longer
+#     subtracted by the `~ empty()` clause and the scored
+#     test_the_stack_is_still_four_commits_with_both_sides_kept fires with
+#     "a commit was added to the repository".
+#
+# Neither is a defect in the assertions: both are the verifier correctly
+# grading incidental repository state that the fixture should never have let
+# into the repository in the first place. The fix belongs here.
+#
+# The list is not only bytecode. Editors are the other thing that runs during a
+# solve, and every kind of file they leave behind auto-tracks exactly the way a
+# .pyc does. MEASURED on this image, each of these otherwise correct
+# `jj edit <origin>` solves scored 0.667 before the pattern that covers it was
+# added -- the same test_each_commit_still_carries_its_own_diff seeing three
+# paths where it wants two, and the same non-zero-exit cap -- and 1.000 after:
+#
+#   * an editor backup, `src/client/retry.py~`                        -> `*~`
+#   * a vim swap file, `src/client/.retry.py.swp`               -> `*.sw[a-p]`
+#   * a vim FALLBACK swap file, `src/client/.retry.py.swn`      -> `*.sw[a-p]`
+#   * an emacs lock file, `src/client/.#retry.py`                     -> `.#*`
+#   * an emacs autosave, `src/client/#retry.py#`                     -> `\#*#`
+#
+# The last two are not exotic. An emacs lock file appears the MOMENT a file is
+# opened for editing -- no save, no test run -- so an agent that opens the
+# conflicted file in emacs and resolves it perfectly loses a third of the mark.
+#
+# THREE THINGS ABOUT THESE PATTERNS WERE MEASURED ON THE PINNED jj 0.44 BINARY,
+# not assumed, because each of them can silently do nothing:
+#
+#   * `\#*#` NEEDS THE BACKSLASH. A gitignore line beginning with `#` is a
+#     COMMENT. Spelled `#*#` the line is not a pattern at all: `#foo#` came
+#     back as `A #foo#` in `jj status` while the block still LOOKED like it
+#     covered emacs autosaves, which is worse than having no line. Spelled
+#     `\#*#` it is honoured, at the root and nested. `.#*` needs no escape --
+#     it begins with a dot.
+#   * `*.sw[a-p]` IS HONOURED, AND THE CLASS DOES REAL WORK. `.swp`, `.swo`,
+#     `.swn`, `.swm`, `.swa` are all ignored; `.swq` and `.swz` are still
+#     tracked, which is what tells the class apart from a pattern that happens
+#     to match. vim rolls DOWN from `.swp` towards `.swa` when the name is
+#     taken, so the range covers the real fallback sequence.
+#   * IGNORE RULES DO NOT RETROACTIVELY UNTRACK. A `#foo.py#` created while the
+#     rule was absent stayed `A #foo.py#` after the rule was added. The file
+#     only helps against strays created after it is in place -- which is the
+#     whole reason it is in the fixture rather than left to the agent.
+#
+# NO `*.pyo`, DELIBERATELY. It does snapshot the same way, so it is a real
+# exposure in principle -- but CPython stopped writing `.pyo` at 3.5 and this
+# image is 3.12. This list documents what agents actually produce; a pattern
+# for a file kind dead for eight years dilutes that.
+#
+# The seven lines cover the file kinds agents actually leave behind; they are
+# not a proof that no stray file can ever reach a path-set assertion.
+#
+# WHERE THIS LINE SITS IS PART OF THE FIX. `.gitignore` is written into `add the
+# charge endpoint`, the first commit of the repository, which is BELOW main and
+# below every commit test_final_state.py grades. Move it up into any of the four
+# stack commits and OWN_PATHS in tests/test_final_state.py needs a `.gitignore`
+# entry for that commit or the path-set assertion fails on the fixture's own
+# file.
+#
+# Read that name carefully: the four-commit stack starts at `count retry
+# attempts in the charge metrics`, and THAT is what test_final_state.py calls
+# FIRST. `add the charge endpoint` -- the "first commit" this comment means --
+# is three commits below it and has no OWN_PATHS entry at all. So "the first
+# commit" and `FIRST` are different commits here, and a change that moves this
+# heredoc down the bootstrap towards `FIRST` is exactly the change that breaks
+# the path-set assertions.
+#
+# COMMITTING it is a fixture-realism choice, not a mechanism requirement: jj
+# honours the file the instant it is on disk, committed or not (measured -- an
+# uncommitted rewrite of this file ignored a fresh `.retry.py.swn` and
+# `#retry.py#` immediately). It is committed because a real Python repository
+# ships one, and into the FIRST commit so it is present at every revision the
+# verifier grades rather than only at the tip.
+cat >.gitignore <<'F'
+__pycache__/
+*.pyc
+.pytest_cache/
+*~
+*.sw[a-p]
+\#*#
+.#*
+F
 cat >src/api/charge.py <<'F'
 from decimal import Decimal
 

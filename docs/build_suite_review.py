@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Regenerate the suite review page.
+"""Regenerate the suite review page, in both of its renderings.
 
 This is a review aid, not benchmark machinery: nothing in the harness imports
-it, and running it touches only the output file named below.
+it, and running it touches only the output files named below.
 
 Inputs (both alongside this script, in docs/):
   suite_review_data_built.json     the 21 built tasks - 14 shipping, 7 demoted
@@ -11,8 +11,12 @@ Inputs (both alongside this script, in docs/):
   suite_review_data_proposed.json  the 10 proposed-but-unbuilt tasks, plus the
                                    caveat text rendered above them
 
-Output:
-  suite_review.html                one self-contained page, no external assets
+Outputs, both written by one run so they cannot drift apart:
+  suite_review.html                one self-contained paged page, no external
+                                   assets; needs a browser
+  suite_review.md                  the same content as one linear document with
+                                   a table of contents, for GitHub's rendered
+                                   markdown view - no download, no local browser
 
 Usage:  python3 docs/build_suite_review.py
 """
@@ -709,3 +713,229 @@ html = f"""<title>The 24-task jj suite</title>
 out = os.path.join(HERE, "suite_review.html")
 open(out, "w").write(html)
 print("wrote", out, len(html), "bytes")
+
+
+# ---------------------------------------------------------------------------
+# markdown rendering - same data, same content, readable in GitHub's web UI
+# ---------------------------------------------------------------------------
+
+STRUCK_NOTE = (
+    "The proposal strikes N10 as a rule violation — requiring ‑i is a method "
+    "constraint and an R3 violation — and its slot in the target set is unassigned. "
+    "The proposal's own answer is to fill that slot from the survey's Tier 3 "
+    "(2.1 split-by-path or 3.3 absorb-into-a-stack cover the salvageable ask). "
+    "It is shown here rather than hidden because the ask is salvageable; the wording "
+    "below is a reconstruction, not a design the proposal states."
+)
+NO_SCORING_NOTE = (
+    "Not recorded — no verifier exists, so there is no test count, no floored set, "
+    "no anchor decision and no measured weaknesses for this task. Risks below are the "
+    "proposal's, not measurements."
+)
+
+SECTION_HEADS = [
+    ("shipping", "Shipping now — 14 built",
+     "Fourteen tasks that exist, run and score today. Everything below is read off the "
+     "built task: the prompt is the file the agent is handed, and the grading is what the "
+     "verifier actually asserts."),
+    ("proposed", "Proposed — 10, none built",
+     "Ten tasks at design stage. Nothing here has been built, run or measured."),
+    ("demoted", "Demoted — 7 kept but not shipping",
+     "Seven built tasks kept as a smoke tier: they still run and still score, they are just "
+     "not part of the shipping fourteen."),
+]
+
+
+def gh_slug(text, seen):
+    """GitHub's heading-anchor rule: lowercase, drop punctuation, spaces to hyphens."""
+    s = text.strip().lower()
+    s = re.sub(r"[^\w\- ]", "", s, flags=re.UNICODE)
+    s = s.replace(" ", "-")
+    n = seen.get(s, 0)
+    seen[s] = n + 1
+    return s if n == 0 else "%s-%d" % (s, n)
+
+
+def _esc(t):
+    """Escape a run of plain prose so markdown renders it as written."""
+    t = t.replace("\\", "\\\\")
+    t = t.replace("<", "&lt;").replace(">", "&gt;")
+    t = t.replace("*", "\\*")
+    t = re.sub(r"(?<![0-9A-Za-z])_|_(?![0-9A-Za-z])", "\\\\_", t)
+    t = t.replace("`", "\\`")  # only ever an unpaired leftover
+    return t
+
+
+def md_text(s):
+    """Prose to markdown: backtick spans kept as code, everything else escaped."""
+    if s is None:
+        return ""
+    parts, i = [], 0
+    for m in re.finditer(r"`+[^`]*`+", s):
+        parts.append(_esc(s[i:m.start()]))
+        parts.append(m.group(0))
+        i = m.end()
+    parts.append(_esc(s[i:]))
+    return "".join(parts)
+
+
+def fenced(text, lang="text"):
+    """Fence verbatim text, widening the fence past any backtick run inside it."""
+    runs = re.findall(r"`+", text)
+    n = max(3, (max(len(r) for r in runs) + 1) if runs else 3)
+    bar = "`" * n
+    body = text if text.endswith("\n") else text + "\n"
+    return "%s%s\n%s%s" % (bar, lang, body, bar)
+
+
+def quoted(s):
+    """Blockquote a single already-escaped paragraph."""
+    return "> " + s.replace("\n", "\n> ")
+
+
+md_seen = {}
+md_anchors = {}
+for _sec, _title, _blurb in SECTION_HEADS:
+    md_anchors["sec:" + _sec] = gh_slug(_title, md_seen)
+for it in items:
+    heading = it["name"] if it["status"] == "built" else (
+        "~~%s~~" % it["name"] if it.get("struck") else it["name"])
+    it["md_heading"] = heading
+    md_anchors[it["name"]] = gh_slug(heading, md_seen)
+
+L = []
+A = L.append
+
+A("# The 24-task jj suite: prompts and grading")
+A("")
+A("Every task in the suite: the exact prompt handed to the agent, and precisely how the "
+  "run is scored. **14 shipping** · **10 proposed, none built** · **7 demoted**. "
+  "Generated from `docs/suite_review_data_built.json` and "
+  "`docs/suite_review_data_proposed.json` by `docs/build_suite_review.py`, which writes "
+  "this file and `docs/suite_review.html` in the same run.")
+A("")
+A("## Contents")
+A("")
+for sec, title, _blurb in SECTION_HEADS:
+    A("**[%s](#%s)**" % (md_text(title), md_anchors["sec:" + sec]))
+    A("")
+    for it in [x for x in items if x["section"] == sec]:
+        label = it["name"]
+        note = []
+        if it["status"] == "built":
+            note.append("prompt rewritten" if it.get("prompt_terse_verbatim")
+                        else "rewrite pending")
+            if it.get("provisional"):
+                note.append("provisional")
+        else:
+            if it.get("struck"):
+                note.append("struck, slot unassigned")
+            note.append("not built")
+        A("- [%s](#%s) — %s" % (md_text(label), md_anchors[it["name"]],
+                                     ", ".join(note)))
+    A("")
+
+for sec, title, blurb in SECTION_HEADS:
+    A("---")
+    A("")
+    A("## %s" % md_text(title))
+    A("")
+    A(md_text(blurb))
+    A("")
+    for it in [x for x in items if x["section"] == sec]:
+        A("### %s" % it["md_heading"])
+        A("")
+        if it["status"] == "built":
+            tags = ["built"]
+            if it.get("provisional"):
+                tags.append("provisional")
+            tags.append("prompt rewritten" if it.get("prompt_terse_verbatim")
+                        else "prompt still spec-style, rewrite pending")
+            tags.append("separated models: %s" % ("yes" if it["separated_models"] else "no"))
+            A(" · ".join("`%s`" % t for t in tags))
+            A("")
+
+            hasterse = bool(it.get("prompt_terse_verbatim"))
+            if hasterse:
+                A("**The prompt — two versions, verbatim.**")
+                A("")
+                A("*Current — `instruction.md`, spec-style:*")
+                A("")
+                A(fenced(it["prompt_verbatim"], "markdown"))
+                A("")
+                A("*Rewritten — one line, user voice (arm `%s`):*" % it["terse_arm"])
+                A("")
+                A(fenced(it["prompt_terse_verbatim"]))
+                A("")
+            else:
+                A("**The prompt, verbatim — `instruction.md`.** "
+                  "Still spec-style — rewrite pending.")
+                A("")
+                A(fenced(it["prompt_verbatim"], "markdown"))
+                A("")
+
+            A("**How success is graded.** " + md_text(it["grading"]))
+            A("")
+            A("**Scoring.** %d tests total / %d floored / %d scored · anchored: **%s** "
+              "· anchor exemptions: **%s**" % (
+                  it["tests_total"], it["tests_floored"], it["tests_scored"],
+                  "yes" if it["anchored"] else "no",
+                  "yes" if it["anchor_exemptions"] else "none"))
+            A("")
+            A(md_text(it["scoring"]))
+            A("")
+            if it.get("floored_test_names"):
+                A("*Floored — must pass, earns nothing:*")
+                A("")
+                for n in it["floored_test_names"]:
+                    A("- `%s`" % n)
+                A("")
+            A("**Known holes.** " + (md_text(it["weaknesses"])
+                                     if it.get("weaknesses") else "None recorded."))
+            A("")
+            A("**Repair queued.** " + (md_text(it["repair_needed"]) if it.get("repair_needed")
+                                       else "None — no repair queued against this task."))
+            A("")
+        else:
+            tags = ["proposed", "nothing built"]
+            if it.get("struck"):
+                tags.append("struck · slot unassigned")
+            A(" · ".join("`%s`" % t for t in tags))
+            A("")
+            if it.get("struck"):
+                A(quoted("**Struck by the proposal.** " + md_text(STRUCK_NOTE)))
+                A("")
+            A(quoted("**Design stage — nothing built.** " + md_text(caveat)))
+            A("")
+            A("**The proposed prompt.** " + (
+                "Wording drafted here, not fixed — the proposal does not state it."
+                if it["prompt_is_drafted_by_me"]
+                else "Wording as the proposal states it."))
+            A("")
+            A(fenced(it["prompt_proposed"]))
+            A("")
+            A("**How success would be graded.**" + (
+                " *Grading reconstructed here, not stated by the proposal.*"
+                if it["grading_is_inferred"] else ""))
+            A("")
+            A(md_text(it["grading"]))
+            A("")
+            A("**Scoring, anchoring, known holes.** " + md_text(NO_SCORING_NOTE))
+            A("")
+            for k, v in (("Capability", it["capability"]),
+                         ("Fixture", it["fixture"]),
+                         ("What it discriminates", it["discriminates"]),
+                         ("Risks", it["risks"])):
+                A("**%s.** %s" % (k, md_text(v)))
+                A("")
+            A("**Needs verification on 0.44.** " + (
+                md_text(it["needs_verification"]) if it.get("needs_verification")
+                else "Nothing flagged for 0.44 verification on this task."))
+            A("")
+        A("[↑ contents](#contents)")
+        A("")
+
+md = "\n".join(L).rstrip("\n") + "\n"
+md_out = os.path.join(HERE, "suite_review.md")
+open(md_out, "w").write(md)
+print("wrote", md_out, len(md), "bytes")

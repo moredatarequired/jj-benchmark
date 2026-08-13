@@ -98,6 +98,19 @@ def test_each_tip_adds_exactly_one_config_block():
             f"`{bookmark}` must add exactly one block to config.toml; it has "
             f"{result.stdout!r}"
         )
+        # The 2 is config.toml plus exactly one source file -- src/api/limits.py
+        # at `rate-limit`, src/client/oauth.py at `oauth-refresh`. `jj diff -r X`
+        # is X against its parent, so this count is a property of the TIP commit
+        # alone and of nothing below it.
+        #
+        # That is the only reason the fixture's .gitignore does not show up here:
+        # it is written in the first fixture commit ("add the charge endpoint"),
+        # which this diff never inspects. Move it to either bookmark tip -- or
+        # add any further file to one -- and `changed` becomes 3 and this fails.
+        # It is meant to: the count is the guard that each tip stays a
+        # single-concern commit, which is what makes the merge the task asks for
+        # a clean one. If this ever fails after a fixture edit, put the new file
+        # back below the bookmarks rather than raising the number.
         changed = set(lines("diff", "-r", bookmark, "--name-only"))
         assert "config.toml" in changed and len(changed) == 2, (
             f"the `{bookmark}` tip should change config.toml and one source "

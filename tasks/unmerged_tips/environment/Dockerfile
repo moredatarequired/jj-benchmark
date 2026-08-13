@@ -58,6 +58,32 @@ jj config set --user user.email "priya@checkout.example"
 
 mkdir -p src/api src/client
 
+# A .gitignore, in the FIRST fixture commit so it is present at every revision
+# the verifier ever grades. jj 0.44 auto-tracks new files, so without one the
+# ordinary droppings of agent work get snapshotted into the working copy and the
+# path-set assertions grade that incidental state: running the repository's own
+# test suite leaves tests/__pycache__/*.pyc, and an editor leaves a backup
+# (src/api/charge.py~) or a swap file (.charge.py.swp) beside what it opened.
+# Each of those was measured costing a correct fileset_rollback solve a quarter
+# -- 0.750000, read from /logs/verifier/reward.txt -- before this list covered
+# it.
+#
+# What the list buys is real but bounded, so say it exactly: it covers the file
+# kinds agents actually leave behind, which is what closes this in practice. It
+# is NOT a proof that no stray file can ever perturb a path-set assertion -- a
+# file outside these patterns still would, and the assertions are still exact
+# set equality. A real Python repository ships one; this is the realistic
+# fixture. The same six lines in the same order are in all three of these
+# fixtures, deliberately.
+cat >.gitignore <<'F'
+__pycache__/
+*.pyc
+.pytest_cache/
+*~
+*.swp
+*.swo
+F
+
 cat >src/api/charge.py <<'F'
 from decimal import Decimal
 

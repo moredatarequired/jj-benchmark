@@ -36,7 +36,10 @@ Three things those runs showed, each of which changed an assertion here:
     main" test would fail jj's own recommended route. So the four-commit
     assertion is made over the DAG range between the anchored first and last
     stack commits, which that sibling is not in, and the no-fifth-commit half
-    is written as "nothing non-empty or described descends from the tip".
+    ignores EMPTY UNDESCRIBED commits specifically -- rather than ignoring
+    everything outside the tip's descendants, which is what it did until a
+    described fifth commit hanging off main was measured scoring 1.000. See
+    test_the_stack_is_still_four_commits_with_both_sides_kept.
 
   * `@` DOES NOT COME BACK. Route A ends with `@` parked on the origin commit,
     not on the stack tip where the bootstrap left it. Nothing here reads `@`'s
@@ -53,9 +56,50 @@ Measured: `jj resolve --tool :ours` at the origin exits 0, clears the conflict
 from all three commits, keeps every change id, and leaves the stack four
 commits long. It passes every structural assertion in this file. The only thing
 wrong with it is that `RETRY_BUDGET` is gone -- the agent kept one side of a
-request that said keep both. That is why two of the three scored tests are
-about file content, and why the fixture is built so that the union is the only
+request that said keep both. That is why two of the three scored tests read
+file content, and why the fixture is built so that the union is the only
 resolution with a defensible reading (environment/Dockerfile, invariants 3-4).
+
+WHAT A SCORE ON THIS TASK ACTUALLY EVIDENCES -- READ BEFORE QUOTING A 1.0
+=========================================================================
+
+Recorded plainly so nobody later reads 1.0 here as more than it is. None of
+this is a defect to be patched in passing: it is what this fixture can and
+cannot support, measured on this image rather than argued.
+
+  * IT IS A TWO-LEVEL INSTRUMENT: 0.333 or 1.0. Every route measured lands on
+    0, 0.333 or 1.0, and nothing in between, because the three scored tests do
+    not fail independently. Resolving anywhere but the origin fails two of them
+    together; `:ours` and `:theirs` fail two of them together. Read a score
+    here as a three-way verdict -- did nothing / did the git-shaped thing /
+    used jj's model -- and never as a proportion of a job done.
+
+  * jj PRINTS MOST OF THE ROUTE. `jj status` in the handover state attaches a
+    hint that NAMES the origin commit and spells out `jj new <origin>` ...
+    resolve ... `jj squash`. The part this task is described as measuring --
+    work out where a propagated conflict started -- is therefore handed over by
+    the tool to any agent that reads its own terminal. What survives is real
+    but smaller: whether the agent acts on that instead of fixing the file in
+    front of it, which is what every other conflict task in the suite rewards.
+    A 1.0 here is evidence of taking jj's advice, not of knowing unprompted
+    where a propagated conflict lives.
+
+  * TWO OF THE THREE SCORED TESTS TURN ON ONE CONTENT JUDGEMENT.
+    test_the_resolution_lives_where_the_conflict_started reads
+    src/client/retry.py at the origin, and
+    test_the_stack_is_still_four_commits_with_both_sides_kept reads the same
+    file at the tip -- where jj has propagated the same bytes. An agent that
+    gets the union right gets both; one that gets it wrong loses both. The
+    second test is not merely a copy of the first, because it also carries the
+    four-commit constraint, which is an independent claim and the only one an
+    otherwise-correct solve can fail on its own. But its CONTENT half is the
+    first test counted twice, so the effective scored width of this task is
+    nearer two judgements than three.
+
+  * WHAT WOULD ACTUALLY RAISE IT, unbuilt on purpose: a SECOND conflicted path
+    whose origin is a DIFFERENT commit, so that jj's hint names one of them and
+    the agent has to find the other unaided. That is a fixture redesign, not an
+    assertion change, and it is deliberately not attempted here.
 """
 
 import subprocess
@@ -255,17 +299,81 @@ def test_the_resolution_lives_where_the_conflict_started():
     )
 
 
-def test_both_sides_of_the_conflict_survived():
-    """At the stack tip: main's rename AND the branch's new constant.
+def test_the_stack_is_still_four_commits_with_both_sides_kept():
+    """The end state the request asked to be left standing.
 
-    Named for the wrong solve it catches. `jj resolve --tool :ours` and
-    `--tool :theirs` both exit 0, clear every conflict and leave the stack
-    structurally perfect; each one silently discards one side's work. Measured:
+    TWO CLAUSES OF THE ONE-LINE REQUEST ARE GRADED TOGETHER HERE, DELIBERATELY.
+
+    "leave the stack as the same four commits" used to be a test of its own,
+    and as one it was decorative -- because it PASSES ON THE UNTOUCHED IMAGE.
+    The bootstrap stack already is those four commits, so the test sat in
+    tests/vacuity_floor.json, and tests/test.sh drops floored names from BOTH
+    sides of its fraction. Breaking the constraint therefore cost nothing the
+    fraction could express. Measured on this image, before the merge:
+
+      * a correct resolution at the origin PLUS a forbidden fifth commit on top
+        of the tip scored 0.667 -- and every point of that penalty came from
+        test.sh's exit-status cap, not from the constraint, which contributed
+        nothing to either side of the fraction;
+      * a correct resolution PLUS a fifth described commit that was NOT a
+        descendant of the tip scored a clean 1.000, because the old check
+        looked only at `descendants(tip)` and could not see it at all.
+
+    Half the prompt was unenforced. Folding the range check into this SCORED
+    test is what makes the constraint cost a real third of the score, and
+    widening it from descendants-of-the-tip to the whole repository is what
+    makes it see the sibling. Both wrong routes now score 0.667.
+
+    "keeping both sides" is graded at the TIP because `jj resolve --tool :ours`
+    and `--tool :theirs` both exit 0, clear every conflict and leave the stack
+    structurally perfect while silently discarding one side's work. Measured:
     `:ours` drops `RETRY_BUDGET` while leaving `budget=RETRY_BUDGET` in the
     signature, so the file it produces does not even import.
+
+    Unpicking the stack and rebuilding it is ruled out by end state alone: the
+    range does not resolve to the four ANCHORED change ids, which a rebuilt
+    repository cannot reproduce.
     """
     snapshot_working_copy()
-    cid = resolve_one(TIP)
+    anchored = [resolve_one(description) for description in STACK]
+
+    span = change_ids(f"change_id({anchored[0]})::change_id({anchored[-1]})")
+    assert set(span) == set(anchored), (
+        "the stack between `%s` and `%s` is no longer the four commits it was.\n"
+        "  missing: %s\n  extra:   %s"
+        % (FIRST, TIP, describe(set(anchored) - set(span)),
+           describe(set(span) - set(anchored)))
+    )
+
+    # Nothing was ADDED anywhere -- not merely nothing on top of the tip.
+    #
+    # Everything the request permits is an ancestor of the stack tip: the four
+    # stack commits themselves, and main and the history below it. So the check
+    # is the whole repository minus that ancestry, rather than the tip's
+    # descendants; a described fifth commit hanging off main is not in the
+    # stack's descendants, and under the old form it scored 1.000.
+    #
+    # Empty undescribed commits are subtracted because the route jj ITSELF
+    # recommends leaves one: `jj squash` empties the scratch commit, jj abandons
+    # it and mints a fresh empty `@` as a sibling of the stack (see the module
+    # docstring). A check that did not ignore those would fail jj's own advice.
+    added = change_ids(
+        f"all() ~ root() ~ ::change_id({anchored[-1]}) "
+        "~ (empty() ~ description(regex:'.'))"
+    )
+    assert not added, (
+        f"a commit was added to the repository: {describe(added)}. The request "
+        "was to leave the stack as the same four commits, and a fix-up commit "
+        "does not reach the commit the conflict started in."
+    )
+
+    pointed = change_ids('bookmarks(exact:"retry-backoff")')
+    assert pointed and set(pointed) <= set(anchored), (
+        "the `retry-backoff` bookmark no longer marks one of the four stack "
+        f"commits; it points at {describe(pointed)}."
+    )
+
+    cid = anchored[-1]
     content = file_at(f"change_id({cid})", CONFLICTED_PATH)
     assert content is not None, (
         f"{CONFLICTED_PATH} is missing from the stack tip `{TIP}` ({cid[:12]})."
@@ -296,46 +404,6 @@ def test_both_sides_of_the_conflict_survived():
     assert "return call(timeout=REQUEST_TIMEOUT)" in lines, (
         "the call site no longer uses main's renamed constant, so main's half "
         "of the change did not survive intact."
-    )
-
-
-def test_the_stack_is_still_the_same_four_commits():
-    """Four anchored commits between the anchored ends, and nothing on top.
-
-    Two wrong routes are ruled out by end state alone. Unpicking the stack and
-    rebuilding it produces commits the anchor has never seen, so the range does
-    not resolve to the four anchored ids. Landing the fix as a fresh commit on
-    top of the stack leaves a fifth commit descending from the tip.
-
-    The DAG range is used rather than a count over the whole repository because
-    the route jj itself recommends (`jj new` / `jj squash`) leaves an empty,
-    undescribed scratch commit hanging off the origin -- see the module
-    docstring. Empty undescribed commits are ignored on the descendant side for
-    the same reason.
-    """
-    snapshot_working_copy()
-    anchored = [resolve_one(description) for description in STACK]
-    span = change_ids(f"change_id({anchored[0]})::change_id({anchored[-1]})")
-    assert set(span) == set(anchored), (
-        "the stack between `%s` and `%s` is no longer the four commits it was.\n"
-        "  missing: %s\n  extra:   %s"
-        % (FIRST, TIP, describe(set(anchored) - set(span)),
-           describe(set(span) - set(anchored)))
-    )
-    added = change_ids(
-        f"descendants(change_id({anchored[-1]})) ~ change_id({anchored[-1]}) "
-        "~ (empty() ~ description(regex:'.'))"
-    )
-    assert not added, (
-        f"a commit was added on top of the stack: {describe(added)}. The "
-        "request was to leave the stack as the same four commits, and a "
-        "fix-up commit on top does not reach the commit the conflict started "
-        "in."
-    )
-    pointed = change_ids('bookmarks(exact:"retry-backoff")')
-    assert pointed and set(pointed) <= set(anchored), (
-        "the `retry-backoff` bookmark no longer marks one of the four stack "
-        f"commits; it points at {describe(pointed)}."
     )
 
 

@@ -383,20 +383,24 @@ def test_feature_bookmark_still_points_at_the_target():
     Bookmarks follow rewritten commits, so a squash leaves `feature` exactly
     where it was. It used to be asserted that way -- equality with the target --
     which is the one assertion in this file that no bullet of the request ever
-    licensed: the instruction does not mention a bookmark at all. An agent
-    penalised here would be penalised for a requirement it was never given.
+    licensed: the instruction does not mention a bookmark at all. It is floored,
+    so it earns nothing, and per tests/test.sh a failing floored test still caps
+    the trial below a full mark; an agent penalised here would be penalised for
+    a requirement it was never given.
 
-    The reason that matters has changed since this relaxation was made, and the
-    earlier version of this docstring now argues from a false premise. It said
-    "it is floored, so it earns nothing, and per tests/test.sh a failing floored
-    test still caps the trial below a full mark". This test is no longer
-    floored: after the floor was re-measured against the untouched image,
-    `tests/vacuity_floor.json` reads 8 tests / 0 floor, so every test in this
-    file is SCORED and a failure here costs a real eighth of the mark outright
-    rather than merely capping a trial that would otherwise be full. The
-    over-strict version was therefore more expensive than the old reasoning
-    made it sound, which strengthens the case for the relaxation rather than
-    weakening it.
+    "It is floored" is a MEASUREMENT, and this repository has already been wrong
+    about it once, in a way worth writing down because the same mistake silently
+    inflates any task's score. `tests/vacuity_floor.json` briefly read 8 tests /
+    0 floor, which would have made this test scored. That number came from a
+    floor run with a STALE `tests/bootstrap_anchor.json` sitting in the tree: an
+    anchor written for an earlier build of the image fails the session-scoped
+    fixture in tests/conftest.py, so every test in this file ERRORS before its
+    body runs, and "no test passed on the untouched image" is then recorded as a
+    floor of zero for the whole task. Re-measured with no stale anchor present,
+    the floor is 3 -- this test, test_target_commit_survived and
+    test_target_commit_still_described_as_the_target -- which is what CI
+    measures too, since CI always builds cold and has no anchor at all. Remove
+    tasks/*/tests/bootstrap_anchor.json before running scripts/vacuity_floor.py.
 
     Relaxed to `feature` pointing at the target OR at an ancestor of it. That
     still rejects the failure this is here for -- a bookmark dragged forward

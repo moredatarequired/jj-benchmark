@@ -118,7 +118,9 @@ REWRITTEN_PROMPT_TASKS = frozenset({
     "abandon_commits",
     "absorb_changes",
     "edit_commit_message",
+    "fileset_rollback",
     "git_fetch_remote",
+    "merge_bookmarks",
     "operation_recovery",
     "rebase_branch",
     "restore_interactive",
@@ -127,6 +129,7 @@ REWRITTEN_PROMPT_TASKS = frozenset({
     "template_customize_log_output",
     "track_untracked_file",
     "undo_mistaken_rebase",
+    "unmerged_tips",
     "workspace_add",
     "workspace_update_stale",
 })

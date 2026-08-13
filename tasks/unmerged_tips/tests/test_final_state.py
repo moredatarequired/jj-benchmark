@@ -40,6 +40,39 @@ assertions below are shaped by:
     why the fixture parks `@` on a tip that is already one of the four rather
     than on a fresh child of `main`, which would have been a fifth.
 
+TWO READINGS, BOTH EVALUATED LIVE -- AND WHY (also R7)
+======================================================
+
+Three solves were run on the image before this was finalised, and the third
+broke the single-revset version of this verifier:
+
+  1. redirect `jj log -r 'heads(main..)'` into the file          -> agreed
+  2. `jj new`, THEN compute and redirect                          -> agreed
+  3. compute and redirect, THEN `jj commit` to save the answer    -> DISAGREED
+
+In (3) the agent's four ids are right about the repository it read, and wrong
+about the repository the verifier sees: `jj commit` puts a new empty commit on
+top of the `idempotency` tip, so that tip stops being a head and the agent's own
+scratch commit becomes one. In (2) the same thing happens in the other
+direction and cancels out, which is why (2) passed and (3) did not.
+
+Scoring (3) zero would be the `restore_interactive` / `track_untracked_file`
+mistake again in a new costume -- failing a correct answer for a bookkeeping
+habit. So the answer is compared against TWO reference sets and passes if it
+matches either. Both are revsets evaluated in this repository at verification
+time; neither is a constant, and the difference between them is exactly the
+commits the agent created:
+
+  * LIVE     `heads(main..)` -- the tips as they stand now.
+  * HANDOVER `heads((main..) & <the commits the bootstrap handed over>)` -- the
+    tips of the work that was already there, ignoring anything the agent added.
+
+Any set that is wrong under the user's request is wrong under both, because they
+differ only in agent-created commits; the second reading cannot admit a listing
+of the wrong bookmarks, of `main`, or of an already-merged tip. With no anchor
+file there is no handover set, so only the live reading is used -- never weaker
+than the verifier was without it.
+
 Short ids are what `change_id.short()` prints and what an agent will naturally
 write, so every line is resolved through `change_id(<token>)` in the repository
 rather than compared as text; a full 32-character id is accepted identically.
@@ -49,6 +82,7 @@ import os
 import re
 import subprocess
 
+import anchor
 from anchor import change_id_or_fallback
 
 PROJECT_DIR = "/home/user/checkout-api"
@@ -145,16 +179,56 @@ def resolve_one(revset, what):
     return found[0]
 
 
-def reference_tips():
-    """The change ids of every head that is not an ancestor of `main`, NOW.
+def unmerged_revset():
+    """`main..`, with `main` addressed by the bootstrap's own change id."""
+    main = resolve_one(graded(MAIN), "main")
+    return f"all() ~ ::change_id({main})"
 
-    Computed in the repository at verification time, so it describes the
-    repository the agent is being graded on rather than the one the task author
-    imagined. `main` is the bootstrap's `main`; see the module docstring.
+
+def handover_change_ids():
+    """The change ids the bootstrap handed over, or None when there is no anchor.
+
+    Read from the anchor rather than from BOOTSTRAP_DESCRIPTIONS so that the
+    handover set is a measurement of the image, not a list in this file that
+    could drift from it.
+    """
+    try:
+        record = anchor.load()
+    except anchor.AnchorUnavailable as exc:
+        print("%s: only the live reading of the tips is used (%s)"
+              % (anchor.IDENTITY_NOT_CLAIMED, exc))
+        return None
+    found = set()
+    for repo in record["repos"]:
+        for commit in repo["commits"]:
+            found.add(commit["change_id"])
+        for working_copy in repo.get("working_copies") or []:
+            found.add(working_copy["change_id"])
+    return found or None
+
+
+def reference_tips():
+    """The reference answers: the live reading, and the handover reading.
+
+    Both are revsets evaluated in the repository at verification time -- see the
+    module docstring for why there are two and what separates them. Returns a
+    list of (label, set) with the live reading always first.
     """
     snapshot_working_copy()
-    main = resolve_one(graded(MAIN), "main")
-    return set(change_ids(f"heads(all() ~ ::change_id({main}))"))
+    unmerged = unmerged_revset()
+    readings = [("live `heads(main..)`", set(change_ids(f"heads({unmerged})")))]
+
+    handover = handover_change_ids()
+    if handover is not None:
+        visible = set(change_ids("all() ~ root()"))
+        anchored = sorted(handover & visible)
+        if anchored:
+            restriction = " | ".join(f"change_id({c})" for c in anchored)
+            readings.append((
+                "handover `heads((main..) & <bootstrap commits>)`",
+                set(change_ids(f"heads(({unmerged}) & ({restriction}))")),
+            ))
+    return readings
 
 
 def answer_lines():
@@ -227,15 +301,22 @@ def describe(cids):
 
 def test_the_listed_ids_are_exactly_the_unmerged_tips():
     """Set equality against the revset, evaluated here and now."""
-    expected = reference_tips()
+    readings = reference_tips()
     actual = resolved_answer()
-    missing, extra = expected - actual, actual - expected
-    assert not missing and not extra, (
+    if any(actual == expected for _, expected in readings):
+        return
+    report = []
+    for label, expected in readings:
+        report.append(
+            f"  against the {label} reading:\n"
+            f"    missing: {describe(expected - actual)}\n"
+            f"    extra:   {describe(actual - expected)}"
+        )
+    raise AssertionError(
         f"{ANSWER_FILE} does not list the tips that are outside main.\n"
-        f"  missing: {describe(missing)}\n"
-        f"  extra:   {describe(extra)}\n"
-        "The expected set is recomputed in this repository at verification "
-        "time; it is not a constant in the verifier."
+        + "\n".join(report)
+        + "\nEvery expected set is recomputed in this repository at "
+        "verification time; none of them is a constant in the verifier."
     )
 
 

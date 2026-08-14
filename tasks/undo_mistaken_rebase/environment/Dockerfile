@@ -24,6 +24,19 @@ RUN mkdir -p /home/user && chmod 0755 /home/user
 LABEL Author="any-task-builder"
 LABEL Description="jj repo with branches for rebase"
 RUN mkdir -p /home/user/repo && cd /home/user/repo && jj git init --colocate && jj config set --user user.name 'Test User' && jj config set --user user.email 'test@example.com' && echo 'base' > f && jj commit -m 'base' && jj bookmark create main && echo 'A' > f && jj commit -m 'A' && jj new main && echo 'B' > f && jj commit -m 'B'
+# Project conventions for coding agents. Deliberately placed in /home/user, the
+# PARENT of the project directory, and never inside the repository: two verifiers
+# assert an exact tracked-file set, so a committed AGENTS.md caps a correct solve
+# below 1.0. CLAUDE.md is a symlink to it and the symlink is load-bearing --
+# measured, the agent harness reads CLAUDE.md and ignores a bare AGENTS.md.
+RUN printf '%s\n' \
+      '# Contributing' \
+      '' \
+      'This project uses Jujutsu (`jj`) for version control. Please use `jj` for all' \
+      'version control work in this repository; `git` should not be used for it.' \
+      > /home/user/AGENTS.md && \
+    ln -s AGENTS.md /home/user/CLAUDE.md
+
 # Where the agent starts. Harbor passes no `-w` to `docker exec` and no
 # task.toml sets [environment] workdir, so the agent process inherits the
 # image's working directory -- and with no WORKDIR anywhere in the chain up to

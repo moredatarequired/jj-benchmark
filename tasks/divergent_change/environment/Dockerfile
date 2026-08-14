@@ -305,6 +305,19 @@ BOOTSTRAP
 # which is where the two visible offsets can be read at runtime. They are not
 # stable across rewrites and must never be hard-coded.
 
+# Project conventions for coding agents. Deliberately placed in /home/user, the
+# PARENT of the project directory, and never inside the repository: two verifiers
+# assert an exact tracked-file set, so a committed AGENTS.md caps a correct solve
+# below 1.0. CLAUDE.md is a symlink to it and the symlink is load-bearing --
+# measured, the agent harness reads CLAUDE.md and ignores a bare AGENTS.md.
+RUN printf '%s\n' \
+      '# Contributing' \
+      '' \
+      'This project uses Jujutsu (`jj`) for version control. Please use `jj` for all' \
+      'version control work in this repository; `git` should not be used for it.' \
+      > /home/user/AGENTS.md && \
+    ln -s AGENTS.md /home/user/CLAUDE.md
+
 WORKDIR /home/user/checkout-api
 
 CMD ["/bin/bash", "-c", "trap : TERM INT; sleep infinity & wait"]

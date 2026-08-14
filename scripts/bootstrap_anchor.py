@@ -354,7 +354,30 @@ def capture(root, roots):
         'change_id ++ "\x1f" ++ commit_id ++ "\x1f" '
         '++ bookmarks.join(",") ++ "\x1f" ++ description.first_line() ++ "\n"'
     )
-    commits = []
+    # A DIVERGENT change is recorded ONCE. Two visible commits can share one
+    # change id -- that is what jj calls divergence -- and the anchor is a map
+    # from a CHANGE to the fact that it still exists, so a divergent change is
+    # one entry with several commit ids and not two entries.
+    #
+    # Recording it twice broke three things at once, all of them measured while
+    # building tasks/divergent_change: validate() below rejects a repeated
+    # change id outright; anchored_change_id() refuses a description that names
+    # two anchor entries, so every graded revset silently fell back to
+    # description matching and the identity claim was never made; and an
+    # exemption entry could not name the change either, for the same reason. A
+    # fixture that SHIPS a divergence -- which is the only way to hand an agent
+    # one to work with -- was therefore unanchorable. Collapsing here fixes all
+    # three and changes nothing for the other tasks, where no change id repeats.
+    #
+    # The kept commit id is the smallest of the versions', so the entry does not
+    # depend on jj's log order, and the bookmarks are the union. Commit ids in
+    # the anchor are diagnostic only -- nothing compares them -- so choosing one
+    # loses nothing. tests/anchor.py asks how many VISIBLE commits carry the
+    # change id at verification time, which is the question it actually needs
+    # answered, and `may_be_divergent` in the task's exemption file is what says
+    # whether more than one is allowed.
+    by_change = {}
+    order = []
     for line in jj(root, "log", "-r", "all() ~ root()", "--no-graph",
                    "-T", template).splitlines():
         if not line:
@@ -362,8 +385,9 @@ def capture(root, roots):
         parts = line.split(SEP)
         if len(parts) < 4:
             raise RuntimeError("unparseable log line %r in %s" % (line, root))
-        commits.append({
-            "change_id": parts[0],
+        change_id = parts[0]
+        record = {
+            "change_id": change_id,
             "commit_id": parts[1],
             # Recorded so a per-task assertion can say "the bookmark the task
             # grades still points at a commit the BOOTSTRAP created". NOT
@@ -375,7 +399,19 @@ def capture(root, roots):
             # solves.
             "bookmarks": [b for b in parts[2].split(",") if b],
             "description": SEP.join(parts[3:]),
-        })
+        }
+        if change_id in by_change:
+            by_change[change_id].append(record)
+        else:
+            by_change[change_id] = [record]
+            order.append(change_id)
+
+    commits = []
+    for change_id in order:
+        versions = sorted(by_change[change_id], key=lambda c: c["commit_id"])
+        entry = dict(versions[0])
+        entry["bookmarks"] = sorted({b for v in versions for b in v["bookmarks"]})
+        commits.append(entry)
 
     # -n 1 is the NEWEST operation; jj op log is newest-first.
     handover = jj(root, "op", "log", "-n", "1", "--no-graph",
@@ -465,7 +501,22 @@ def all_tasks() -> list[str]:
 
 
 def validate(task: str, raw: dict) -> None:
-    """Reject a measurement that could not do its job, loudly."""
+    """Reject a measurement that could not do its job, loudly.
+
+    WHERE THE DUPLICATE-CHANGE-ID CHECK WENT. The repeated-change-id branch
+    below can no longer fire on any real repository: capture() collapses a
+    change id carrying several visible commits into one entry, so a fixture that
+    ships a divergence -- or one that grows an accidental divergence later --
+    produces a single entry here and reaches this function looking well formed.
+    It is kept as an assertion about capture() itself, not about the fixture.
+    The question it used to answer for a fixture ("is anything in the bootstrap
+    state divergent, and was that meant?") is now answered one step later, by
+    tests/anchor.py at --verify-untouched: an anchored change id resolving to
+    more than one visible commit is a violation there unless the task's
+    tests/anchor_exemptions.json lists it as `may_be_divergent`. So an
+    accidentally divergent fixture fails the pre-flight rather than the
+    measurement, and it fails it by name.
+    """
     for repo in raw["repos"]:
         if not repo["commits"]:
             raise MeasureError(
@@ -479,7 +530,10 @@ def validate(task: str, raw: dict) -> None:
             raise MeasureError(
                 f"{task}: {repo['path']} reports the same change id twice in the "
                 "bootstrap state; the anchor could not tell a duplicate apart "
-                "from the original"
+                "from the original. A DIVERGENT change is not this: capture() "
+                "collapses a change id carrying several visible commits into a "
+                "single entry, so reaching here means the collapse itself is "
+                "broken."
             )
         for change_id in ids:
             if len(change_id) != 32 or set(change_id) - CHANGE_ID_ALPHABET:

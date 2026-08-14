@@ -57,27 +57,58 @@ mkdir -p src/api src/client
 # A .gitignore, in the FIRST fixture commit so it is present at every revision
 # the verifier ever grades. jj 0.44 auto-tracks new files, so without one the
 # ordinary droppings of agent work get snapshotted into the working copy and the
-# path-set assertions grade that incidental state: running the repository's own
-# test suite leaves tests/__pycache__/*.pyc, and an editor leaves a backup
-# (src/api/charge.py~) or a swap file (.charge.py.swp) beside what it opened.
-# Each of those was measured costing a correct fileset_rollback solve a quarter
-# -- 0.750000, read from /logs/verifier/reward.txt -- before this list covered
-# it.
+# path-set assertions grade that incidental state. Three editors' worth of it:
+# running the repository's own test suite leaves tests/__pycache__/*.pyc; vim
+# leaves a backup (src/api/charge.py~) and a swap file, .charge.py.swp or, when
+# that name is already taken, .charge.py.swo then .swn, .swm, .swl as it rolls
+# down towards .swa; emacs leaves a lock file (.#charge.py) the moment a file is
+# opened for editing -- before any save, before any test run -- and an autosave
+# (#charge.py#) shortly after. Each of those was measured costing a correct
+# fileset_rollback solve a quarter -- 0.750000, read from
+# /logs/verifier/reward.txt -- before this list covered it.
 #
-# What the list buys is real but bounded, so say it exactly: it covers the file
-# kinds agents actually leave behind, which is what closes this in practice. It
-# is NOT a proof that no stray file can ever perturb a path-set assertion -- a
-# file outside these patterns still would, and the assertions are still exact
-# set equality. A real Python repository ships one; this is the realistic
-# fixture. The same six lines in the same order are in all three of these
-# fixtures, deliberately.
+# The backslash in \#*# is load-bearing; do not "tidy" it away. A .gitignore
+# line beginning with a bare # is a COMMENT, so the unescaped spelling #*#
+# ignores nothing at all while looking like it covers the autosaves -- worse
+# than not having the line, because it reads as covered. Measured on the pinned
+# jj 0.44 binary in a fresh working copy: with #*# the autosave shows up as
+# `A src/api/#foo#`; with \#*# it does not appear in `jj status` at all. .#*
+# needs no escape, because it does not begin with a #. The character class is
+# doing real work too rather than matching by accident: .swa, .swm, .swn, .swo
+# and .swp are all ignored while .swq and .swz stay tracked.
+#
+# *.pyo is deliberately absent, and that is worth saying rather than leaving it
+# to look like an oversight. It is a real exposure in principle -- write one and
+# jj snapshots it -- but CPython stopped emitting .pyo at 3.5 and this image is
+# Python 3.12, so nothing in the fixture can produce one. This list documents
+# what agents actually leave behind; a pattern for a file kind dead for eight
+# years dilutes that.
+#
+# Two measured facts about placement, so the next person need not rediscover
+# them. First, an ignore rule does NOT retroactively untrack: a file jj has
+# already snapshotted stays in the working copy however the list changes
+# afterwards, which is why this has to exist BEFORE anything can drop a stray
+# file rather than at the tip. Second, jj honours the file even uncommitted, so
+# committing it into the first fixture commit is not a mechanism requirement --
+# it is a fixture-realism choice. A real Python repository has this file
+# committed, and one whose earliest revision already carries it is the
+# repository an agent would expect to find.
+#
+# What the list buys is real but bounded, so say it exactly: it covers, in full,
+# the file kinds agents actually leave behind -- Python bytecode and pytest
+# caches, vim backups and every swap-file name vim will fall back to, emacs lock
+# and autosave files -- which is what closes this in practice. It is NOT a proof
+# that no stray file can ever perturb a path-set assertion: a file outside these
+# kinds still would, and the assertions are still exact set equality. The same
+# seven lines in the same order are in all ten of these fixtures, deliberately.
 cat >.gitignore <<'F'
 __pycache__/
 *.pyc
 .pytest_cache/
 *~
-*.swp
-*.swo
+*.sw[a-p]
+\#*#
+.#*
 F
 
 cat >config.toml <<'F'

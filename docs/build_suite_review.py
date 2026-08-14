@@ -6,13 +6,15 @@ it, and running it touches only the two output files named below.
 
 One entry per task: the prompt, a short grading summary, one line of metadata,
 and a known hole only where one exists. Everything shared - how scoring works,
-what "anchored" means, that the proposed tasks are unbuilt - is said once at the
+what "anchored" means, how to read the proposed entries - is said once at the
 top and never repeated per task.
 
 Inputs:
-  suite_review_data_built.json     judgments about the 21 built tasks: grading
-                                   summary, known hole, anchored/provisional
-  suite_review_data_proposed.json  the 9 proposed tasks, design stage
+  suite_review_data_built.json     judgments about 21 tasks -- the 14 that
+                                   survived the cut and are built, plus the 7
+                                   the cut deleted: grading summary, known
+                                   hole, anchored/provisional
+  suite_review_data_proposed.json  the 9 proposed tasks, as designed
   ../tasks/<name>/instruction.md            the prompt, read live
   ../tasks/<name>/tests/vacuity_floor.json  test count and floor, read live
   ../tasks/<name>/tests/anchor_exemptions.json  presence only, read live
@@ -112,7 +114,7 @@ def meta_line(t):
 
 
 def proposed_meta(t):
-    return "design stage, nothing built · " + (
+    return "design as written, since built · " + (
         "Hugh's wording, verbatim" if t["wording_from_hugh"] else "wording drafted")
 
 
@@ -123,10 +125,11 @@ def proposed_meta(t):
 TITLE = "The jj suite: prompts and grading"
 
 INTRO = (
-    "Every task's prompt, and what its verifier actually checks. **14 built and "
-    "shipping** — %d task directories in the tree, so that is the whole suite — "
-    "plus **9 proposed** (design stage, plus one unassigned slot) and **7 cut**. "
-    "Generated "
+    "Every task's prompt, and what its verifier actually checks. The suite is "
+    "**%d tasks**; the **14** written up below are the ones that survived the "
+    "cut. The ten authored since were built from the designs listed under "
+    "*Proposed* and ship alongside them, but are not reviewed here yet. Plus "
+    "**7 cut**. Generated "
     "by `docs/build_suite_review.py`, which writes this file and "
     "`docs/suite_review.html` in the same run; prompts and test counts are read "
     "from `tasks/` at build time, not stored." % SUITE_TOTAL
@@ -155,19 +158,21 @@ PREAMBLE = [
      "each check falls back to what it asserted before, saying out loud that no "
      "identity claim was made."),
     ("The proposed nine",
-     "Nothing in the second section exists. No fixture, no verifier, no run, no "
-     "measurement — so there is no test count, no floor, no anchor decision and no "
-     "measured weakness for any of them. Their *graded* sentences describe what a "
-     "verifier would assert."),
+     "The second section is kept as written, at design stage: no test count, no "
+     "floor, no anchor decision and no measured weakness is recorded for any of "
+     "them, and their *graded* sentences describe what a verifier would assert. "
+     "All nine have since been built and ship in `tasks/`; read the entries as the "
+     "design each new task came from, not as a description of the shipped task."),
 ]
 
 SECTIONS = [
-    ("shipping", "Shipping now — 14 built",
+    ("shipping", "Shipping now — the 14 that survived the cut",
      "The prompt shown is the file the agent is handed, `tasks/<name>/instruction.md`, "
      "read at build time; the grading is what `tests/test_final_state.py` asserts. "
-     "All fourteen were rewritten from specifications into requests in `4c2a6de0`.",
+     "All fourteen were rewritten from specifications into requests in `4c2a6de0`. "
+     "The ten tasks authored after the cut also ship, but have no write-up here yet.",
      shipping),
-    ("proposed", "Proposed — 9 designs, none built",
+    ("proposed", "Proposed — 9 designs, since built",
      proposed_doc["section_note"] + " " + proposed_doc["standing_constraints"],
      proposed),
     ("demoted", "Cut — 7 that measured nothing",
@@ -532,7 +537,7 @@ JS = r"""
 
   var SEC = {
     shipping: {label:"Shipping now", cls:"sec-ship"},
-    proposed: {label:"Proposed \u2014 design stage", cls:"sec-prop"},
+    proposed: {label:"Proposed \u2014 since built", cls:"sec-prop"},
     demoted:  {label:"Cut \u2014 measured nothing", cls:"sec-dem"}
   };
 
@@ -590,7 +595,7 @@ JS = r"""
 
   idx.appendChild(groupHead("g-ship","Shipping now", bySec.shipping.length));
   bySec.shipping.forEach(function(i){ idx.appendChild(itemButton(pages[i], i)); });
-  idx.appendChild(groupHead("g-prop","Proposed \u00b7 none built", bySec.proposed.length));
+  idx.appendChild(groupHead("g-prop","Proposed \u00b7 since built", bySec.proposed.length));
   bySec.proposed.forEach(function(i){ idx.appendChild(itemButton(pages[i], i)); });
   idx.appendChild(groupHead("g-dem","Demoted", 7));
   bySec.demoted.forEach(function(i){ idx.appendChild(itemButton(pages[i], i)); });

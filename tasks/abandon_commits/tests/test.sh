@@ -38,8 +38,8 @@ pytest_status=$?
 #
 # The naive score -- summary.passed / summary.tests -- is NOT a measure of how
 # much of the task the agent did. It is the fraction of assertions that happen
-# to hold, and a good many of them hold in the untouched bootstrap image: 7 of
-# the 14 tasks pass at least one test with no agent, and undo_mistaken_rebase
+# to hold, and a good many of them hold in the untouched bootstrap image: 17 of
+# the 24 tasks pass at least one test with no agent, and undo_mistaken_rebase
 # passes 4 of its 6 by design (its correct end state IS the bootstrap state;
 # only the operation log tells a real solve apart). Awarding the raw fraction
 # would hand every model 0.667 there for doing nothing.
@@ -51,7 +51,7 @@ pytest_status=$?
 #
 # The floor is the set of test names in tests/vacuity_floor.json, which rides
 # along in the same tests/ directory harbor copies to /tests -- that is what
-# lets this script stay byte-identical across all 14 tasks
+# lets this script stay byte-identical across all 24 tasks
 # (scripts/lint_tasks.py enforces that). Those names are measured by
 # scripts/vacuity_floor.py against the untouched image and re-measured in CI
 # with --check; they are never hand-written.

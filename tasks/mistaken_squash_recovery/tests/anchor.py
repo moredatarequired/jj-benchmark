@@ -88,13 +88,13 @@ be absent OR present; everything else about the anchor still applies to it.
 
 **The rejected alternative, recorded so nobody proposes it again.** The obvious
 fix is to relax (1) from "resolves NOW" to "resolved at the handover operation"
--- and it is WRONG. Operations are append-only, so the pure-jj rebuild route
-(`jj new -r 'root()'` + `jj restore --from <rev>`, then `jj abandon` the
-originals) leaves the handover operation and all its commits intact *at that
-operation*. That route has been observed scoring reward 1.0 in a real sweep. The
-weakened invariant passes it. So the strict "resolves NOW" check is kept
-everywhere it is safe, and weakened only where a named commit is named, with a
-reason, in a committed file.
+-- and it is WRONG. Ordinary jj commands only append to the operation log, so
+the pure-jj rebuild route (`jj new -r 'root()'` + `jj restore --from <rev>`,
+then `jj abandon` the originals) leaves the handover operation and all its
+commits intact *at that operation*. That route has been observed scoring reward
+1.0 in a real sweep. The weakened invariant passes it. So the strict "resolves
+NOW" check is kept everywhere it is safe, and weakened only where a named commit
+is named, with a reason, in a committed file.
 
 SCHEMA of /tests/anchor_exemptions.json
 =======================================
@@ -595,11 +595,16 @@ def violations(anchor: dict, exemptions: Exemptions | None = None) -> list[str]:
         if handover and handover not in operations:
             found.append(
                 "[%s] %s: the operation log no longer contains the operation "
-                "the bootstrap ended on (%s...). Operations are append-only and "
-                "an operation id is a content hash over what the operation did "
-                "and when, so nothing an agent does can remove that entry or "
-                "reproduce it -- an operation log without it is a NEW operation "
-                "log. This repository's history was rebuilt, not edited."
+                "the bootstrap ended on (%s...). An operation id is a content "
+                "hash over what the operation did and when, so no agent can "
+                "reproduce that id -- but an agent CAN remove the entry: `jj "
+                "op abandon` delists operations from `jj op log`, and the "
+                "range form `jj op abandon ..@-` takes most of the log at "
+                "once, leaving every commit byte-identical. This check tests "
+                "membership in `jj op log`, so it cannot tell the two apart: "
+                "either this repository was rebuilt on a fresh operation log, "
+                "or its operation log was rewritten after the fact. Neither "
+                "leaves the handover verifiable. See docs/known_limitations.md."
                 % (CODE_HANDOVER_OP_GONE, path, handover[:DISPLAY])
             )
     return found
@@ -775,14 +780,16 @@ def _violation_report(anchor: dict, found: list[str], exempt: Exemptions) -> str
         + "\n\nThe anchor was captured from the untouched task image before "
         "the agent ran (see scripts/bootstrap_anchor.py) and records the "
         "change id of every bootstrap commit plus the id of the last "
-        "operation the bootstrap performed. Nothing a correct solve does "
-        "can break it -- rebase, squash-into-an-existing-commit, describe and "
-        "restore all preserve change ids, the operation log is append-only, "
-        "and any commit this task's asked-for work legitimately removes is "
-        "named with a reason in tests/anchor_exemptions.json (%s). A failure "
-        "here means either that the repository was recreated rather than worked "
-        "on, or that an exemption is missing -- and the first line above says "
-        "which checks broke."
+        "operation the bootstrap performed. No ordinary solve breaks it -- "
+        "rebase, squash-into-an-existing-commit, describe and restore all "
+        "preserve change ids, ordinary work only appends to the operation "
+        "log, and any commit this task's asked-for work legitimately removes "
+        "is named with a reason in tests/anchor_exemptions.json (%s). A "
+        "failure here means the repository was recreated rather than worked "
+        "on, or an exemption is missing, or the operation log itself was "
+        "rewritten -- `jj op abandon` does that, and scores an otherwise "
+        "correct solve 0 (see docs/known_limitations.md) -- and the first "
+        "line above says which checks broke."
         % exempt.describe()
     )
 

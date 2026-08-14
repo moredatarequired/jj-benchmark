@@ -59,7 +59,8 @@ urgent, but whoever is next in that file should pick one.
 A correct solve followed by `jj op abandon` scores 0. The anchor looks for the handover
 operation in the op log, does not find it, and declares the repository rebuilt.
 
-The anchor's own message claims no agent can remove that entry. That is false on jj 0.44.
+The anchor's own message used to claim no agent can remove that entry. That is false on jj
+0.44, and the message has since been corrected to say so.
 Measured on the pinned 0.44.0 binary in a task image, abandoning the third entry of the
 log, numbering `@` as the first, printed `Abandoned 1 operations and reparented 2
 descendant operations.` The log is linear, so the descendant count is the number of entries
@@ -104,12 +105,13 @@ unusual command.
 It is most reachable on the two operation-log tasks, `operation_recovery` and
 `undo_mistaken_rebase`: both ask the agent to put the repository back to an earlier state,
 so both invite operating on the op log directly, and `jj op abandon` is a plausible thing
-to reach for there in a way it is not on the other twelve.
+to reach for there in a way it is not on the other twenty-two.
 
-The anchor's message text still claims that no agent can remove the handover entry; that
-claim is false and needs correcting, and because the file is byte-identical across every
-task the correction should be its own small PR rather than riding along with a task
-change.
+The anchor's message text has been corrected: it no longer claims the operation log is
+append-only or that no agent can remove the handover entry, and it now names `jj op
+abandon` as the other way this check can fail. What the check does is unchanged — the
+limitation above stands. The correction landed as its own small PR rather than riding
+along with a task change, because the file is byte-identical across every task.
 
 ## Exposure
 

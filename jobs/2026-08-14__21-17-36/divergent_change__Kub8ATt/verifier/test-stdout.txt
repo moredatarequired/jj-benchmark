@@ -1,0 +1,105 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 4 items
+
+../../../tests/test_final_state.py FFF.                                  [100%]
+
+=================================== FAILURES ===================================
+_____________________ test_the_change_is_recorded_once_now _____________________
+
+    def test_the_change_is_recorded_once_now():
+        """One visible commit under the change id that had two.
+    
+        This is the half a `jj bookmark set` on its own does not reach: pointing the
+        bookmark at one version leaves both versions visible and the change still
+        divergent.
+        """
+        snapshot_working_copy()
+        versions = visible_versions(DIVERGED)
+>       assert len(versions) == 1, (
+            f"the change described `{DIVERGED}` still resolves to {len(versions)} "
+            f"visible commits ({', '.join(v[:12] for v in versions)}). Two visible "
+            "commits under one change id is what jj calls a divergent change, and "
+            "the request was to end with one of them."
+        )
+E       AssertionError: the change described `add idempotency key to charge requests` still resolves to 2 visible commits (545a1173242c, cd617530cb9d). Two visible commits under one change id is what jj calls a divergent change, and the request was to end with one of them.
+E       assert 2 == 1
+E        +  where 2 = len(['545a1173242c6a019d6c445850a4da9d006971ad', 'cd617530cb9d9f66ee43eccf8cf5782d98ee279d'])
+
+/tests/test_final_state.py:269: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds (1 commit(s) may be divergent per /tests/anchor_exemptions.json)
+___________ test_the_version_with_the_tests_is_the_one_that_survived ___________
+
+    def test_the_version_with_the_tests_is_the_one_that_survived():
+        """The survivor is the version that carries tests/test_charge.py.
+    
+        Named for the wrong solve it catches. The two versions are
+        indistinguishable structurally -- same change id, same description, same
+        parent, same bookmark -- so an agent that picks by offset has a 50/50 shot,
+        and the fixture is built so that the offset heuristic picks wrong: `/0` is
+        the version built LAST, which is the one without the tests.
+    
+        Compared line by line, rstripped, so trailing whitespace is not the
+        difference between 1.0 and 0.
+        """
+        snapshot_working_copy()
+>       cid = resolve_one(DIVERGED)
+              ^^^^^^^^^^^^^^^^^^^^^
+
+/tests/test_final_state.py:290: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+description = 'add idempotency key to charge requests'
+
+    def resolve_one(description):
+        """The change id of the single visible commit the anchor (or fallback) names."""
+        snapshot_working_copy()
+        revset = graded(description)
+        found = commit_ids(revset)
+>       assert len(found) == 1, (
+            f"the bootstrap commit `{description}` resolves to {len(found)} "
+            "visible commit(s), expected exactly one."
+        )
+E       AssertionError: the bootstrap commit `add idempotency key to charge requests` resolves to 2 visible commit(s), expected exactly one.
+E       assert 2 == 1
+E        +  where 2 = len(['545a1173242c6a019d6c445850a4da9d006971ad', 'cd617530cb9d9f66ee43eccf8cf5782d98ee279d'])
+
+/tests/test_final_state.py:223: AssertionError
+____________ test_the_bookmark_names_one_commit_and_it_is_that_one _____________
+
+    def test_the_bookmark_names_one_commit_and_it_is_that_one():
+        """`idempotency` is no longer conflicted, and marks the surviving version.
+    
+        Measured: resolving the divergence does NOT resolve the bookmark. After the
+        abandon, `bookmarks(exact:"idempotency")` already resolves to exactly one
+        visible commit while the bookmark itself still holds two targets, one of
+        them the hidden common ancestor -- so the revset alone cannot tell a
+        finished solve from a half-finished one, and the `conflict` keyword is read
+        as well.
+        """
+        snapshot_working_copy()
+        conflicted = local_bookmarks()
+        assert BOOKMARK in conflicted, (
+            f"there is no local `{BOOKMARK}` bookmark any more. The request was to "
+            "repoint it, not to remove it."
+        )
+>       assert not conflicted[BOOKMARK], (
+            f"the `{BOOKMARK}` bookmark is still conflicted: it holds more than one "
+            "target, so nothing can be pushed or checked out through it. Abandoning "
+            "one version of the change does not resolve this on its own."
+        )
+E       AssertionError: the `idempotency` bookmark is still conflicted: it holds more than one target, so nothing can be pushed or checked out through it. Abandoning one version of the change does not resolve this on its own.
+E       assert not True
+
+/tests/test_final_state.py:330: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_nothing_else_in_the_repository_moved
+FAILED ../../../tests/test_final_state.py::test_the_change_is_recorded_once_now
+FAILED ../../../tests/test_final_state.py::test_the_version_with_the_tests_is_the_one_that_survived
+FAILED ../../../tests/test_final_state.py::test_the_bookmark_names_one_commit_and_it_is_that_one
+========================= 3 failed, 1 passed in 0.32s ==========================
+reward 0: none of the 3 scored test(s) passed (1 floored test(s) excluded)

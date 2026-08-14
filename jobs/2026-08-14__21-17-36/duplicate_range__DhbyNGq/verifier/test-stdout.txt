@@ -1,0 +1,72 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 4 items
+
+../../../tests/test_final_state.py ..F.                                  [100%]
+
+=================================== FAILURES ===================================
+________________ test_the_originals_are_still_on_main_untouched ________________
+
+    def test_the_originals_are_still_on_main_untouched():
+        """The run is still on main, with the commit ids the bootstrap gave it.
+    
+        Named for the wrong solve it catches, and the reason it is written as one
+        test rather than two: `jj rebase -r <the run> -d release/2.4` RELOCATES the
+        three commits, which leaves a release branch that satisfies the two tests
+        above and a main with a hole in it. Because a rebase preserves change ids,
+        the bootstrap anchor does not see it either. Asserting the originals alone
+        would not do: that assertion holds on an untouched image, so it would be
+        measured into the vacuity floor and excluded from scoring -- and the
+        relocation would then score full marks. So this test re-derives the copies
+        as well, and therefore fails on an untouched image, where there are none.
+    
+        The parent links are compared by COMMIT id, which is normally the wrong
+        thing to assert. It is safe on this task and only on this task: nothing the
+        request asks for rewrites these commits or any ancestor of them, so a
+        correct solve cannot move them and their commit ids cannot change. Where an
+        ancestor IS rewritten, jj rebases the descendants and mints new commit ids
+        while keeping the change ids, and the same assertion would fail every
+        correct solve.
+        """
+        added, _ = copies_in_order()
+        assert len(added) == 3, (
+            f"nothing was copied onto the release branch: {len(added)} commit(s) "
+            f"descend from `{RELEASE_TIP}`. The originals staying put is only half "
+            "of the request."
+        )
+        below = resolve_one(BELOW_THE_RUN)
+        main_tip = resolve_one(MAIN_TIP)
+        ordered_originals = [resolve_one(description) for description in RUN]
+        span = change_ids(
+            f"change_id({below})::change_id({main_tip})")
+        expected_span = {below, main_tip} | set(ordered_originals)
+>       assert set(span) == expected_span, (
+            "main no longer holds the run between "
+            f"`{BELOW_THE_RUN}` and `{MAIN_TIP}`.\n  missing: %s\n  extra:   %s"
+            % (describe(expected_span - set(span)), describe(set(span) - expected_span))
+        )
+E       AssertionError: main no longer holds the run between `add a client-side rate limiter` and `start the 2.5 changelog`.
+E           missing: pnmurlzy add tests for duplicate keys; kmrtknys return 409 on duplicate keys; tuqxosop validate the duplicate-key format
+E           extra:   (none)
+E       assert {'ortmknqrmws...nksllspppoyk'} == {'kmrtknyskmz...nksllspppoyk'}
+E         
+E         Extra items in the right set:
+E         'tuqxosopzxnqyosptykmonymqpsruwwo'
+E         'pnmurlzytwuqkwnuoxuqpqvnrrxplzmp'
+E         'kmrtknyskmzwpwmssmkkkkpkqqxokkvp'
+E         Use -v to get more diff
+
+/tests/test_final_state.py:416: AssertionError
+==================================== PASSES ====================================
+_______________ test_three_new_commits_sit_on_the_release_branch _______________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_three_new_commits_sit_on_the_release_branch
+PASSED ../../../tests/test_final_state.py::test_the_copies_carry_the_same_changes_in_the_same_order
+PASSED ../../../tests/test_final_state.py::test_nothing_else_in_the_repository_moved
+FAILED ../../../tests/test_final_state.py::test_the_originals_are_still_on_main_untouched
+========================= 1 failed, 3 passed in 0.86s ==========================
+reward 0.666667: 2 of 3 scored test(s) passed (test_the_copies_carry_the_same_changes_in_the_same_order, test_three_new_commits_sit_on_the_release_branch); 1 test(s) excluded as passing with no agent (test_nothing_else_in_the_repository_moved)

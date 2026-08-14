@@ -1,0 +1,44 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 2,
+            "passed": 0,
+            "failed": 2,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1786745072.8507423,
+            "stop": 1786745072.9927845
+        },
+        "tests": [
+            {
+                "name": "test_final_state.py::test_template_alias_configured",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.04269299600082377,
+                "start": 1786745072.9055362,
+                "stop": 1786745072.9597342,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_template_alias_configured():\n        \"\"\"The alias exists under the required name and names the required pieces.\n    \n        Tolerant of how the value was quoted. `jj config get` returns the value\n        after TOML decoding, so an alias written with `jj config set` and a\n        single-escaped basic string arrives with a real newline where a\n        hand-written literal string arrives with a backslash and an `n`. Both spell\n        the same jj template, so the real newline is normalised back before the\n        text is inspected.\n        \"\"\"\n        result = jj(\"config\", \"get\", CONFIG_KEY)\n        assert result.returncode == 0, (\n            f\"`jj config get {CONFIG_KEY}` failed, so no template alias named \"\n            f\"{ALIAS!r} is configured: {result.stderr.strip()}\"\n        )\n    \n        value = result.stdout.strip(\"\\n\")\n        # A real 0x0A inside the value is a TOML-decoded `\\n` escape; put it back\n        # so that both ways of writing the same template compare equal here.\n        normalized = value.replace(\"\\n\", \"\\\\n\")\n    \n        assert \"change_id.short()\" in normalized, (\n            f\"Alias {ALIAS!r} does not use change_id.short(): {value!r}\"\n        )\n        assert \"description.first_line()\" in normalized, (\n            f\"Alias {ALIAS!r} does not use description.first_line(): {value!r}\"\n        )\n        assert '\" | \"' in normalized or \"' | '\" in normalized, (\n            f\"Alias {ALIAS!r} is missing the ' | ' separator: {value!r}\"\n        )\n>       assert '\"\\\\n\"' in normalized or \"'\\\\n'\" in normalized, (\n            f\"Alias {ALIAS!r} does not end its line with a newline: {value!r}\"\n        )\nE       AssertionError: Alias 'log_custom' does not end its line with a newline: 'change_id.short() ++ \" | \" ++ description.first_line()'\nE       assert ('\"\\\\n\"' in 'change_id.short() ++ \" | \" ++ description.first_line()' or \"'\\\\n'\" in 'change_id.short() ++ \" | \" ++ description.first_line()')\n\n/tests/test_final_state.py:113: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_final_state.py::test_alias_renders_the_required_format",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.028688225000678358,
+                "start": 1786745072.9600444,
+                "stop": 1786745072.9925365,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_alias_renders_the_required_format():\n        \"\"\"The alias renders exactly what the instruction asks for.\n    \n        Rendered output is compared against the specified template applied to the\n        same revisions, so this is indifferent to how the alias was quoted, which\n        config layer it lives in, and whether it was written by `jj config set` or\n        by hand -- and it is not indifferent to any part of the required format.\n        \"\"\"\n        actual = jj(\"log\", \"-r\", \"all()\", \"--no-graph\", \"-T\", ALIAS)\n        assert actual.returncode == 0, (\n            f\"`jj log -T {ALIAS}` failed, so the template alias is not usable: \"\n            f\"{actual.stderr.strip()}\"\n        )\n    \n        expected = jj(\"log\", \"-r\", \"all()\", \"--no-graph\", \"-T\", REQUIRED_TEMPLATE)\n        assert expected.returncode == 0, (\n            f\"the verifier's own reference template failed to render: \"\n            f\"{expected.stderr.strip()}\"\n        )\n    \n>       assert actual.stdout == expected.stdout, (\n            f\"`jj log -T {ALIAS}` rendered {actual.stdout!r}, but the required \"\n            f\"template ({REQUIRED_TEMPLATE}) renders {expected.stdout!r}\"\n        )\nE       AssertionError: `jj log -T log_custom` rendered 'tyyqwnqyxpuz | zzzzzzzzzzzz | ', but the required template (change_id.short() ++ \" | \" ++ description.first_line() ++ \"\\n\") renders 'tyyqwnqyxpuz | \\nzzzzzzzzzzzz | \\n'\nE       assert 'tyyqwnqyxpuz...zzzzzzzzzz | ' == 'tyyqwnqyxpuz...zzzzzzzz | \\n'\nE         \nE         + tyyqwnqyxpuz | zzzzzzzzzzzz | \nE         - tyyqwnqyxpuz | \nE         - zzzzzzzzzzzz |\n\n/tests/test_final_state.py:138: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            }
+        ]
+    }
+}

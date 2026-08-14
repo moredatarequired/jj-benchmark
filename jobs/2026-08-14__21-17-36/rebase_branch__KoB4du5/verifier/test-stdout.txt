@@ -1,0 +1,57 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 3 items
+
+../../../tests/test_final_state.py F..                                   [100%]
+
+=================================== FAILURES ===================================
+____________________ test_feature_branch_rebased_onto_main _____________________
+
+    def test_feature_branch_rebased_onto_main():
+        """Priority 1: feature-branch's commits must now sit on top of main.
+    
+        The old version of this test only counted the commits in
+        `main..feature-branch` and asserted the count was 2. That count is 2 before
+        the rebase as well -- the two feature commits are outside main's ancestry
+        whether they hang off `base` or off `main` -- so the headline assertion of
+        this task passed on the untouched image and measured nothing. Writing the
+        resolved two-line data.txt into the un-rebased commit scored 1.
+    
+        What actually distinguishes the rebased state is ancestry: `main` must be
+        an ancestor of `feature-branch`, and the root of the stack must have `main`
+        as its parent. Both are structural (commit ids from explicit revsets), so
+        nothing here depends on jj's human-readable prose. WHICH commits they are
+        comes from the anchor, because a bookmark is a pointer the agent can move
+        and ancestry between two moved pointers says nothing about identity.
+        """
+        main_id = _one_commit_id("main")
+        feature_id = _one_commit_id("feature-branch")
+    
+        # Ancestry: this is the assertion the old test was missing entirely.
+        assert _commit_ids("main & ::feature-branch") == [main_id], (
+            f"main ({main_id}) is not an ancestor of feature-branch ({feature_id}): "
+            "feature-branch has not been rebased onto main."
+        )
+    
+        # The rebased stack is still the two feature commits -- not squashed away,
+        # not partially left behind on the old base.
+        stack = _commit_ids("main..feature-branch")
+>       assert len(stack) == 2, (
+            f"Expected exactly 2 commits in main..feature-branch, got {len(stack)}: {stack}"
+        )
+E       AssertionError: Expected exactly 2 commits in main..feature-branch, got 1: ['882f2b8d7b2c535df26cb5fefe63b63b3b88d520']
+E       assert 1 == 2
+E        +  where 1 = len(['882f2b8d7b2c535df26cb5fefe63b63b3b88d520'])
+
+/tests/test_final_state.py:147: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds (1 commit(s) may be absent per /tests/anchor_exemptions.json)
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_conflict_resolved_content
+PASSED ../../../tests/test_final_state.py::test_no_unresolved_conflicts
+FAILED ../../../tests/test_final_state.py::test_feature_branch_rebased_onto_main
+========================= 1 failed, 2 passed in 0.15s ==========================
+reward 0.500000: 1 of 2 scored test(s) passed (test_conflict_resolved_content); 1 test(s) excluded as passing with no agent (test_no_unresolved_conflicts)

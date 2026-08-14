@@ -1,0 +1,97 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 5 items
+
+../../../tests/test_final_state.py FFF..                                 [100%]
+
+=================================== FAILURES ===================================
+_________________ test_the_commit_carries_the_new_description __________________
+
+    def test_the_commit_carries_the_new_description():
+        """The bootstrap's own `fix nonce handling` commit now says the new thing.
+    
+        Resolved through the anchor, so this is the commit the bootstrap created and
+        not merely something that looks like it. `--ignore-immutable` reaches this
+        assertion; it does not reach test_the_stack_can_be_rewritten_again.
+        """
+        snapshot_working_copy()
+        cid = resolve_one(OLD_DESCRIPTION)
+        found = first_lines(f"change_id({cid})")
+>       assert found == [NEW_DESCRIPTION], (
+            f"the commit the bootstrap described `{OLD_DESCRIPTION}` ({cid[:12]}) "
+            f"is described {found!r}; the request was for it to say "
+            f"{NEW_DESCRIPTION!r}."
+        )
+E       AssertionError: the commit the bootstrap described `fix nonce handling` (lyrsznnppmmx) is described ['fix nonce handling']; the request was for it to say 'handle nonces on retried charges'.
+E       assert ['fix nonce handling'] == ['handle nonc...ried charges']
+E         
+E         At index 0 diff: 'fix nonce handling' != 'handle nonces on retried charges'
+E         Use -v to get more diff
+
+/tests/test_final_state.py:196: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+________________ test_no_commit_is_still_described_the_old_way _________________
+
+    def test_no_commit_is_still_described_the_old_way():
+        """Nothing anywhere still says `fix nonce handling`.
+    
+        Named for the wrong solve it catches: rewording by making a NEW commit that
+        says the right thing, or by duplicating the old one, leaves the original
+        text visible somewhere in the repository. A reword replaces text; it does
+        not add a second copy of it.
+        """
+        snapshot_working_copy()
+        still = change_ids(f'description(substring:"{OLD_DESCRIPTION}")')
+>       assert not still, (
+            f"{len(still)} commit(s) are still described `{OLD_DESCRIPTION}`: "
+            f"{describe(still)}. The reword was asked for, not a second commit "
+            "beside the first."
+        )
+E       AssertionError: 1 commit(s) are still described `fix nonce handling`: lyrsznnp fix nonce handling. The reword was asked for, not a second commit beside the first.
+E       assert not ['lyrsznnppmmxuqqzmlnlwpswuvqplpqo']
+
+/tests/test_final_state.py:213: AssertionError
+____________________ test_the_stack_can_be_rewritten_again _____________________
+
+    def test_the_stack_can_be_rewritten_again():
+        """All four stack commits are in `mutable()`.
+    
+        This is the half that `jj describe --ignore-immutable` does not reach: that
+        flag "only affects the check", in jj's own words, and leaves
+        `immutable_heads()` exactly as wide as it was, so the next rewrite is
+        refused all over again. The protection is EVALUATED here, through jj's
+        builtin `mutable()` alias, rather than read out of a config file -- any way
+        of narrowing the alias counts, and jj 0.44 accepts several removed config
+        keys in silence, so a setting that changes nothing must not be able to pass.
+        """
+        snapshot_working_copy()
+        anchored = {description: resolve_one(description) for description in STACK}
+        mutable = set(change_ids("mutable()"))
+        blocked = [
+            description for description, cid in anchored.items()
+            if cid not in mutable
+        ]
+>       assert not blocked, (
+            "the stack is still protected from rewrites: "
+            + describe([anchored[d] for d in blocked])
+            + ".\nThe request was to unblock the stack, so `immutable_heads()` has "
+            "to stop covering these -- an override on one command leaves the next "
+            "rewrite refused."
+        )
+E       AssertionError: the stack is still protected from rewrites: ltqxqwql reuse the nonce on retried charges; lyrsznnp fix nonce handling; oxvvxnls record retry attempts in the charge metrics.
+E         The request was to unblock the stack, so `immutable_heads()` has to stop covering these -- an override on one command leaves the next rewrite refused.
+E       assert not ['record retry attempts in the charge metrics', 'fix nonce handling', 'reuse the nonce on retried charges']
+
+/tests/test_final_state.py:238: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_main_and_everything_below_it_is_still_protected
+PASSED ../../../tests/test_final_state.py::test_the_stack_is_still_the_same_four_commits
+FAILED ../../../tests/test_final_state.py::test_the_commit_carries_the_new_description
+FAILED ../../../tests/test_final_state.py::test_no_commit_is_still_described_the_old_way
+FAILED ../../../tests/test_final_state.py::test_the_stack_can_be_rewritten_again
+========================= 3 failed, 2 passed in 0.41s ==========================
+reward 0: none of the 3 scored test(s) passed (2 floored test(s) excluded)

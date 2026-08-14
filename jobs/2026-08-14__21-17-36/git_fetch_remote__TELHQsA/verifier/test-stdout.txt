@@ -1,0 +1,44 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 2 items
+
+../../../tests/test_final_state.py .F                                    [100%]
+
+=================================== FAILURES ===================================
+_________________________ test_feature_rebased_on_main _________________________
+
+    def test_feature_rebased_on_main():
+        wanted = feature_commit_id()
+        pushed = remote_ref("feature")
+        main = remote_ref("main")
+        assert main is not None, "The remote has no `main` branch to have rebased onto."
+        assert pushed == wanted, (
+            f"The remote's `feature` points at {pushed}, not at the commit the "
+            f"bootstrap's `{FEATURE}` change resolves to ({wanted})."
+        )
+        assert pushed != main, (
+            "The remote's `feature` and `main` are the same commit, so nothing was "
+            "rebased onto anything -- `git merge-base --is-ancestor main main` "
+            "succeeds trivially. `feature` has to be a commit ON TOP OF main."
+        )
+        ancestor = git("merge-base", "--is-ancestor", "main", "feature")
+>       assert ancestor.returncode == 0, (
+            "Expected 'feature' to be rebased onto the latest 'main': the remote's "
+            f"main ({main}) is not an ancestor of its feature ({pushed})."
+        )
+E       AssertionError: Expected 'feature' to be rebased onto the latest 'main': the remote's main (9d391174e710fd262f15f158438f65bc62e43746) is not an ancestor of its feature (bd3d3f4cf09d1ecd43effc4bcff312c623a16ce2).
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['git', 'merge-base', '--is-ancestor', 'main', 'feature'], returncode=1, stdout='', stderr='').returncode
+
+/tests/test_final_state.py:142: AssertionError
+==================================== PASSES ====================================
+________________________ test_feature_pushed_to_remote _________________________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_feature_pushed_to_remote
+FAILED ../../../tests/test_final_state.py::test_feature_rebased_on_main - Ass...
+========================= 1 failed, 1 passed in 0.24s ==========================
+reward 0.500000: 1 of 2 scored test(s) passed (test_feature_pushed_to_remote); 0 test(s) excluded as passing with no agent (none)

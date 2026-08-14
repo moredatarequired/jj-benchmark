@@ -1,0 +1,49 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 4 items
+
+../../../tests/test_final_state.py ..F.                                  [100%]
+
+=================================== FAILURES ===================================
+_________________________ test_draft_bookmark_deleted __________________________
+
+    def test_draft_bookmark_deleted():
+        """`draft` is gone -- and so is the commit it pointed at.
+    
+        The bookmark's absence on its own is satisfied by deleting a bookmark and
+        doing nothing else. Requirement 2 is that the commit is abandoned, which is a
+        statement about the bootstrap's `commit C` and is checked as one. That commit
+        is named in tests/anchor_exemptions.json for exactly this reason: its removal
+        is the asked-for work.
+        """
+        res = run_jj_cmd(["log", "-r", "draft"])
+        assert res.returncode != 0, "Bookmark 'draft' should be deleted and not resolvable."
+    
+        change = anchored_change(DELETED_COMMIT)
+        revset = (f"present({change})" if change
+                  else f'description(substring:"{DELETED_COMMIT}")')
+        still_here = jj("log", "-r", revset, "--no-graph",
+                        "-T", 'change_id ++ " " ++ description.first_line() ++ "\\n"')
+>       assert not still_here.strip(), (
+            f"The commit the bootstrap described {DELETED_COMMIT!r} is still visible "
+            f"({still_here.strip()}); requirement 2 abandons it."
+        )
+E       AssertionError: The commit the bootstrap described 'commit C' is still visible (oqmkzlrvwswmvvsystzovszuvtusswzy commit C); requirement 2 abandons it.
+E       assert not 'oqmkzlrvwswmvvsystzovszuvtusswzy commit C'
+E        +  where 'oqmkzlrvwswmvvsystzovszuvtusswzy commit C' = <built-in method strip of str object at 0x7f9d84924630>()
+E        +    where <built-in method strip of str object at 0x7f9d84924630> = 'oqmkzlrvwswmvvsystzovszuvtusswzy commit C\n'.strip
+
+/tests/test_final_state.py:168: AssertionError
+==================================== PASSES ====================================
+__________________________ test_files_in_working_copy __________________________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds (2 commit(s) may be absent per /tests/anchor_exemptions.json)
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_files_in_working_copy
+PASSED ../../../tests/test_final_state.py::test_experiment_bookmark_retained
+PASSED ../../../tests/test_final_state.py::test_working_copy_description
+FAILED ../../../tests/test_final_state.py::test_draft_bookmark_deleted - Asse...
+========================= 1 failed, 3 passed in 0.22s ==========================
+reward 0.750000: 3 of 4 scored test(s) passed (test_experiment_bookmark_retained, test_files_in_working_copy, test_working_copy_description); 0 test(s) excluded as passing with no agent (none)

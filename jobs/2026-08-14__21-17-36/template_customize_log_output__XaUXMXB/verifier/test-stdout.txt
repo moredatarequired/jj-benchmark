@@ -1,0 +1,65 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 2 items
+
+../../../tests/test_final_state.py FF                                    [100%]
+
+=================================== FAILURES ===================================
+________________________ test_template_alias_configured ________________________
+
+    def test_template_alias_configured():
+        """The alias exists under the required name and names the required pieces.
+    
+        Tolerant of how the value was quoted. `jj config get` returns the value
+        after TOML decoding, so an alias written with `jj config set` and a
+        single-escaped basic string arrives with a real newline where a
+        hand-written literal string arrives with a backslash and an `n`. Both spell
+        the same jj template, so the real newline is normalised back before the
+        text is inspected.
+        """
+        result = jj("config", "get", CONFIG_KEY)
+>       assert result.returncode == 0, (
+            f"`jj config get {CONFIG_KEY}` failed, so no template alias named "
+            f"{ALIAS!r} is configured: {result.stderr.strip()}"
+        )
+E       AssertionError: `jj config get template-aliases.log_custom` failed, so no template alias named 'log_custom' is configured: Config error: Value not found for template-aliases.log_custom
+E         For help, see https://docs.jj-vcs.dev/latest/config/ or use `jj help -k config`.
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['jj', '--ignore-working-copy', 'config', 'get', 'template-aliases.log_custom'], returncode=1, s...d for template-aliases.log_custom\nFor help, see https://docs.jj-vcs.dev/latest/config/ or use `jj help -k config`.\n').returncode
+
+/tests/test_final_state.py:94: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+____________________ test_alias_renders_the_required_format ____________________
+
+    def test_alias_renders_the_required_format():
+        """The alias renders exactly what the instruction asks for.
+    
+        Rendered output is compared against the specified template applied to the
+        same revisions, so this is indifferent to how the alias was quoted, which
+        config layer it lives in, and whether it was written by `jj config set` or
+        by hand -- and it is not indifferent to any part of the required format.
+        """
+        actual = jj("log", "-r", "all()", "--no-graph", "-T", ALIAS)
+>       assert actual.returncode == 0, (
+            f"`jj log -T {ALIAS}` failed, so the template alias is not usable: "
+            f"{actual.stderr.strip()}"
+        )
+E       AssertionError: `jj log -T log_custom` failed, so the template alias is not usable: Error: Failed to parse template: Keyword `log_custom` doesn't exist
+E         Caused by:  --> 1:1
+E           |
+E         1 | log_custom
+E           | ^--------^
+E           |
+E           = Keyword `log_custom` doesn't exist
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['jj', '--ignore-working-copy', 'log', '-r', 'all()', '--no-graph', '-T', 'log_custom'], returnc...oesn't exist\nCaused by:  --> 1:1\n  |\n1 | log_custom\n  | ^--------^\n  |\n  = Keyword `log_custom` doesn't exist\n").returncode
+
+/tests/test_final_state.py:127: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../tests/test_final_state.py::test_template_alias_configured - A...
+FAILED ../../../tests/test_final_state.py::test_alias_renders_the_required_format
+============================== 2 failed in 0.24s ===============================
+reward 0: none of the 2 scored test(s) passed (0 floored test(s) excluded)

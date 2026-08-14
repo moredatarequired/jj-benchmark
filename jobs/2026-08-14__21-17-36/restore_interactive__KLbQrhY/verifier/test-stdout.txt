@@ -1,0 +1,252 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 7 items
+
+../../../tests/test_final_state.py FFFFFFF                               [100%]
+
+=================================== FAILURES ===================================
+______________________________ test_history_shape ______________________________
+
+    def test_history_shape():
+        """Exactly the original four commits, in the original order, still exist.
+    
+        Empty undescribed commits are excluded from the comparison. They are what
+        `jj new` leaves behind, and an agent that starts a fresh change before
+        rewriting history -- see
+        assert_the_handover_working_copy_is_still_checked_out() -- adds one without
+        changing the history in any way a reviewer would call a change. This test is
+        floored, so it earns nothing; per tests/test.sh a failing floored test is
+        still enough to cap a correct solve below a full mark, so it must not fail
+        for something the task never asked about. A commit with content or with a
+        description is still counted, which is the case this is here for: work
+        parked in a fifth commit rather than folded into the one that dropped the
+        file.
+    
+        The snapshot is taken here as well as in the working-copy tests: the
+        bootstrap leaves notes.txt written but unsnapshotted, so without it the
+        handover `@` reads as empty-and-undescribed and would be filtered out of the
+        comparison it is supposed to be part of.
+        """
+        snapshot_working_copy()
+        scratch = '(empty() & description(exact:""))'
+        chain = descriptions(f"(::@ ~ root()) ~ {scratch}")
+        assert chain == EXPECTED_DESCRIPTIONS, (
+            "The four commits above the root must still be, oldest first: "
+            f"{EXPECTED_DESCRIPTIONS}. Got: {chain}"
+        )
+        all_commits = descriptions(f"(all() ~ root()) ~ {scratch}")
+>       assert len(all_commits) == 4, (
+            "The repository must still contain exactly four commits above the root "
+            f"(empty, undescribed ones aside); found {len(all_commits)}: "
+            f"{all_commits}"
+        )
+E       AssertionError: The repository must still contain exactly four commits above the root (empty, undescribed ones aside); found 6: ['Initial commit', 'remove legacy module', 'add logging', 'remove legacy module', 'add logging', '']
+E       assert 6 == 4
+E        +  where 6 = len(['Initial commit', 'remove legacy module', 'add logging', 'remove legacy module', 'add logging', ''])
+
+/tests/test_final_state.py:238: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+__________________ test_settings_restored_into_cleanup_commit __________________
+
+    def test_settings_restored_into_cleanup_commit():
+        """`remove legacy module` contains settings.toml with the original content."""
+        cleanup = graded(CLEANUP)
+>       assert "settings.toml" in tree_paths(cleanup), (
+            "`settings.toml` is still missing from the bootstrap's own "
+            f"`remove legacy module` commit ({cleanup})."
+        )
+E       AssertionError: `settings.toml` is still missing from the bootstrap's own `remove legacy module` commit (kmwknmmrxoopsxyuokwnkwxxstqqzymz).
+E       assert 'settings.toml' in {'main.py'}
+E        +  where {'main.py'} = tree_paths('kmwknmmrxoopsxyuokwnkwxxstqqzymz')
+
+/tests/test_final_state.py:248: AssertionError
+________________ test_cleanup_commit_no_longer_deletes_settings ________________
+
+    def test_cleanup_commit_no_longer_deletes_settings():
+        """Structural check: that commit does not change settings.toml at all.
+    
+        Compared against its parent rather than against a literal, so that a
+        solution which "fixed" things by rewriting `Initial commit` instead cannot
+        pass; the parent's content is pinned separately below.
+        """
+        initial, cleanup = graded(INITIAL), graded(CLEANUP)
+        assert file_at(initial, "settings.toml") == SETTINGS_TOML, (
+            f"`settings.toml` in the bootstrap's `Initial commit` ({initial}) was "
+            "modified; it must be left alone."
+        )
+>       assert file_at(cleanup, "settings.toml") == file_at(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            initial, "settings.toml"
+        ), (
+            f"The bootstrap's `remove legacy module` commit ({cleanup}) still changes "
+            "`settings.toml`."
+        )
+
+/tests/test_final_state.py:270: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+rev = 'kmwknmmrxoopsxyuokwnkwxxstqqzymz', path = 'settings.toml'
+
+    def file_at(rev, path):
+        """Contents of path at rev. Fails the test if the path is not there."""
+        result = jj("file", "show", "-r", rev, path)
+>       assert result.returncode == 0, (
+            f"`{path}` is not present in revision `{rev}`: {result.stderr.strip()}"
+        )
+E       AssertionError: `settings.toml` is not present in revision `kmwknmmrxoopsxyuokwnkwxxstqqzymz`: Error: No such path: settings.toml
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['jj', '--ignore-working-copy', 'file', 'show', '-r', 'kmwknmmrxoopsxyuokwnkwxxstqqzymz', 'settings.toml'], returncode=1, stdout='', stderr='Error: No such path: settings.toml\n').returncode
+
+/tests/test_final_state.py:171: AssertionError
+__________________ test_cleanup_commit_keeps_its_own_changes ___________________
+
+    def test_cleanup_commit_keeps_its_own_changes():
+        """The rest of that commit is untouched: legacy.py gone, main.py rewritten."""
+        initial, cleanup = graded(INITIAL), graded(CLEANUP)
+        assert "legacy.py" in tree_paths(initial), (
+            f"`legacy.py` is missing from the bootstrap's `Initial commit` "
+            f"({initial}); that commit must be left alone."
+        )
+        assert file_at(initial, "main.py") == MAIN_INITIAL, (
+            f"`main.py` in the bootstrap's `Initial commit` ({initial}) was modified; "
+            "it must be left alone."
+        )
+        assert "legacy.py" not in tree_paths(cleanup), (
+            "`legacy.py` must still be deleted by the bootstrap's "
+            f"`remove legacy module` commit ({cleanup})."
+        )
+        assert file_at(cleanup, "main.py") == MAIN_AFTER_CLEANUP, (
+            f"The bootstrap's `remove legacy module` commit ({cleanup}) had its "
+            "change to `main.py` altered."
+        )
+>       assert changed_paths(cleanup) == {"legacy.py", "main.py"}, (
+            f"The bootstrap's `remove legacy module` commit ({cleanup}) must change "
+            "exactly `legacy.py` and `main.py`, but it changes: "
+            f"{sorted(changed_paths(cleanup))}"
+        )
+E       AssertionError: The bootstrap's `remove legacy module` commit (kmwknmmrxoopsxyuokwnkwxxstqqzymz) must change exactly `legacy.py` and `main.py`, but it changes: ['legacy.py', 'main.py', 'settings.toml']
+E       assert {'legacy.py',...ettings.toml'} == {'legacy.py', 'main.py'}
+E         
+E         Extra items in the left set:
+E         'settings.toml'
+E         Use -v to get more diff
+
+/tests/test_final_state.py:302: AssertionError
+___________________________ test_later_commit_intact ___________________________
+
+    def test_later_commit_intact():
+        """`add logging` still records only its own change to main.py."""
+        logging_rev = graded(LOGGING)
+        assert changed_paths(logging_rev) == {"main.py"}, (
+            f"The bootstrap's `add logging` commit ({logging_rev}) must change only "
+            f"`main.py`, but it changes: {sorted(changed_paths(logging_rev))}"
+        )
+        assert file_at(logging_rev, "main.py") == MAIN_AFTER_LOGGING, (
+            f"The bootstrap's `add logging` commit ({logging_rev}) had its change to "
+            "`main.py` altered."
+        )
+>       assert file_at(logging_rev, "settings.toml") == SETTINGS_TOML, (
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "`settings.toml` must be present with the original content in the "
+            f"bootstrap's `add logging` commit ({logging_rev})."
+        )
+
+/tests/test_final_state.py:320: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+rev = 'kporztzpqroluvomrtstlryxmuzqwvxu', path = 'settings.toml'
+
+    def file_at(rev, path):
+        """Contents of path at rev. Fails the test if the path is not there."""
+        result = jj("file", "show", "-r", rev, path)
+>       assert result.returncode == 0, (
+            f"`{path}` is not present in revision `{rev}`: {result.stderr.strip()}"
+        )
+E       AssertionError: `settings.toml` is not present in revision `kporztzpqroluvomrtstlryxmuzqwvxu`: Error: No such path: settings.toml
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['jj', '--ignore-working-copy', 'file', 'show', '-r', 'kporztzpqroluvomrtstlryxmuzqwvxu', 'settings.toml'], returncode=1, stdout='', stderr='Error: No such path: settings.toml\n').returncode
+
+/tests/test_final_state.py:171: AssertionError
+___________________________ test_working_copy_intact ___________________________
+
+    def test_working_copy_intact():
+        """The working copy still adds notes.txt and nothing else."""
+>       handover = assert_the_handover_working_copy_is_still_checked_out()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/tests/test_final_state.py:332: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tests/test_final_state.py:200: in assert_the_handover_working_copy_is_still_checked_out
+    assert change_ids(f"({handover}) & ::@"), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/tests/test_final_state.py:152: in change_ids
+    out = jj_ok("log", "-r", revset, "--no-graph", "-T", 'change_id ++ "\\n"')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = ('log', '-r', '(komtlkyrrxumkvovvruqpuzzsnlnvmzn) & ::@', '--no-graph', '-T', 'change_id ++ "\\n"')
+result = CompletedProcess(args=['jj', '--ignore-working-copy', 'log', '-r', '(komtlkyrrxumkvovvruqpuzzsnlnvmzn) & ::@', '--no-g...ge_id ++ "\\n"'], returncode=1, stdout='', stderr="Error: Revision `komtlkyrrxumkvovvruqpuzzsnlnvmzn` doesn't exist\n")
+@py_assert1 = 1, @py_assert4 = 0
+
+    def jj_ok(*args):
+        result = jj(*args)
+>       assert result.returncode == 0, (
+            f"`jj {' '.join(args)}` failed with exit code {result.returncode}: "
+            f"{result.stderr.strip()}"
+        )
+E       AssertionError: `jj log -r (komtlkyrrxumkvovvruqpuzzsnlnvmzn) & ::@ --no-graph -T change_id ++ "\n"` failed with exit code 1: Error: Revision `komtlkyrrxumkvovvruqpuzzsnlnvmzn` doesn't exist
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['jj', '--ignore-working-copy', 'log', '-r', '(komtlkyrrxumkvovvruqpuzzsnlnvmzn) & ::@', '--no-g...ge_id ++ "\\n"'], returncode=1, stdout='', stderr="Error: Revision `komtlkyrrxumkvovvruqpuzzsnlnvmzn` doesn't exist\n").returncode
+
+/tests/test_final_state.py:126: AssertionError
+____________________________ test_settings_on_disk _____________________________
+
+    def test_settings_on_disk():
+        """The checked-out tree really has the file back, not just the commits.
+    
+        The content check here is unavoidably a read off disk -- that is the whole
+        point of the test. What the anchor adds is the identity of the tree being
+        read: `@` has to still be the working-copy commit the bootstrap handed over,
+        so "the file is back on disk" cannot be satisfied by checking out a
+        fabricated commit that happens to contain it.
+        """
+>       assert_the_handover_working_copy_is_still_checked_out()
+
+/tests/test_final_state.py:357: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tests/test_final_state.py:200: in assert_the_handover_working_copy_is_still_checked_out
+    assert change_ids(f"({handover}) & ::@"), (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/tests/test_final_state.py:152: in change_ids
+    out = jj_ok("log", "-r", revset, "--no-graph", "-T", 'change_id ++ "\\n"')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = ('log', '-r', '(komtlkyrrxumkvovvruqpuzzsnlnvmzn) & ::@', '--no-graph', '-T', 'change_id ++ "\\n"')
+result = CompletedProcess(args=['jj', '--ignore-working-copy', 'log', '-r', '(komtlkyrrxumkvovvruqpuzzsnlnvmzn) & ::@', '--no-g...ge_id ++ "\\n"'], returncode=1, stdout='', stderr="Error: Revision `komtlkyrrxumkvovvruqpuzzsnlnvmzn` doesn't exist\n")
+@py_assert1 = 1, @py_assert4 = 0
+
+    def jj_ok(*args):
+        result = jj(*args)
+>       assert result.returncode == 0, (
+            f"`jj {' '.join(args)}` failed with exit code {result.returncode}: "
+            f"{result.stderr.strip()}"
+        )
+E       AssertionError: `jj log -r (komtlkyrrxumkvovvruqpuzzsnlnvmzn) & ::@ --no-graph -T change_id ++ "\n"` failed with exit code 1: Error: Revision `komtlkyrrxumkvovvruqpuzzsnlnvmzn` doesn't exist
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['jj', '--ignore-working-copy', 'log', '-r', '(komtlkyrrxumkvovvruqpuzzsnlnvmzn) & ::@', '--no-g...ge_id ++ "\\n"'], returncode=1, stdout='', stderr="Error: Revision `komtlkyrrxumkvovvruqpuzzsnlnvmzn` doesn't exist\n").returncode
+
+/tests/test_final_state.py:126: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../tests/test_final_state.py::test_history_shape - AssertionErro...
+FAILED ../../../tests/test_final_state.py::test_settings_restored_into_cleanup_commit
+FAILED ../../../tests/test_final_state.py::test_cleanup_commit_no_longer_deletes_settings
+FAILED ../../../tests/test_final_state.py::test_cleanup_commit_keeps_its_own_changes
+FAILED ../../../tests/test_final_state.py::test_later_commit_intact - Asserti...
+FAILED ../../../tests/test_final_state.py::test_working_copy_intact - Asserti...
+FAILED ../../../tests/test_final_state.py::test_settings_on_disk - AssertionE...
+============================== 7 failed in 0.45s ===============================
+reward 0: none of the 6 scored test(s) passed (1 floored test(s) excluded). NOTE: floored test(s) test_history_shape failed, which this score does not penalise -- see the CTRF report

@@ -1,0 +1,65 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 4,
+            "passed": 1,
+            "failed": 3,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1786744523.062853,
+            "stop": 1786744523.961552
+        },
+        "tests": [
+            {
+                "name": "test_final_state.py::test_the_work_reached_the_origin",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.12401819000024261,
+                "start": 1786744523.078969,
+                "stop": 1786744523.229468,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_the_work_reached_the_origin():\n        \"\"\"All three commits are in origin's rate-limit history.\n    \n        This is the test both silent no-ops fail. `jj git push` and\n        `jj git push -b rate-limit` each exit 0 on the untouched repository and\n        leave origin exactly as it was, because the bookmark they are asked to push\n        is already where the remote has it -- the three commits above it are not\n        part of the branch as far as the bookmark is concerned.\n        \"\"\"\n        snapshot_working_copy()\n        history = origin_history(BOOKMARK)\n        missing = [\n            description for description in WORK\n            if commit_id_of(description) not in history\n        ]\n>       assert not missing, (\n            \"origin's `%s` branch does not contain %d of the three commits: %s.\\n\"\n            \"A jj bookmark does not move when you commit, so the three commits \"\n            \"above `%s` are not part of what `jj git push` considers the branch \"\n            \"until the bookmark is moved onto them -- and the push exits 0 and \"\n            \"says `Nothing changed.` rather than complaining.\"\n            % (BOOKMARK, len(missing), \", \".join(f\"`{d}`\" for d in missing),\n               BOOKMARK_WAS_ON)\n        )\nE       AssertionError: origin's `rate-limit` branch does not contain 3 of the three commits: `read the rate limit from config`, `refill the bucket between attempts`, `add tests for the token bucket`.\nE         A jj bookmark does not move when you commit, so the three commits above `add a token bucket to the client` are not part of what `jj git push` considers the branch until the bookmark is moved onto them -- and the push exits 0 and says `Nothing changed.` rather than complaining.\nE       assert not ['read the rate limit from config', 'refill the bucket between attempts', 'add tests for the token bucket']\n\n/tests/test_final_state.py:250: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_final_state.py::test_the_origin_branch_ends_on_the_tip_of_the_work",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.09459712299940293,
+                "start": 1786744523.2298398,
+                "stop": 1786744523.339245,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_the_origin_branch_ends_on_the_tip_of_the_work():\n        \"\"\"origin's rate-limit points at the newest commit, not merely contains it.\n    \n        Named for the wrong solve it catches: publishing PART of the work. Measured\n        -- and this is the one that would have slipped past a reachability check\n        alone -- `git push origin HEAD:refs/heads/rate-limit` from the colocated\n        repository publishes two of the three commits, because in a colocated repo\n        git's HEAD is `@-`: jj does not export the working-copy commit to HEAD. The\n        branch moves, the push exits 0, and the newest commit is still unpublished.\n        \"\"\"\n        snapshot_working_copy()\n        tip = commit_id_of(TIP)\n        ref = origin_ref(BOOKMARK)\n        assert ref is not None, (\n            f\"origin has no `{BOOKMARK}` branch at all any more.\"\n        )\n>       assert ref == tip, (\n            f\"origin's `{BOOKMARK}` points at {ref[:12]}, but the newest commit of \"\n            f\"the work, `{TIP}`, is {tip[:12]}. Whatever else is in the remote's \"\n            \"object store, the branch itself has not been moved onto the work.\"\n        )\nE       AssertionError: origin's `rate-limit` points at 6b07b34d4adf, but the newest commit of the work, `add tests for the token bucket`, is cf441e85ccb0. Whatever else is in the remote's object store, the branch itself has not been moved onto the work.\nE       assert '6b07b34d4adf...42956010c96f6' == 'cf441e85ccb0...68779f0f87bcc'\nE         \nE         - cf441e85ccb016056f08ce6e49968779f0f87bcc\nE         + 6b07b34d4adf5898936e756c45742956010c96f6\n\n/tests/test_final_state.py:277: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_final_state.py::test_the_local_bookmark_marks_the_work",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.12391414099965914,
+                "start": 1786744523.3399632,
+                "stop": 1786744523.4686453,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_the_local_bookmark_marks_the_work():\n        \"\"\"`rate-limit` locally marks the tip of the work, and is not conflicted.\n    \n        Separate from the two remote tests because it is a separate failure: a\n        `git push` run straight from the colocated repository moves the remote ref\n        and leaves the jj bookmark three commits back, which is the same latent\n        problem the agent was handed, still there.\n        \"\"\"\n        snapshot_working_copy()\n        marks, conflicted = local_bookmark_target(BOOKMARK)\n        assert marks is not None, (\n            f\"there is no local `{BOOKMARK}` bookmark any more.\"\n        )\n        assert not conflicted, (\n            f\"the local `{BOOKMARK}` bookmark is conflicted: it holds more than one \"\n            \"target.\"\n        )\n>       assert marks == [resolve_one(TIP)], (\n            f\"`{BOOKMARK}` marks {marks}, not the tip of the work, `{TIP}`.\"\n        )\nE       AssertionError: `rate-limit` marks ['lrmuyzrwrynyypmryszqvryzmvrvtorw'], not the tip of the work, `add tests for the token bucket`.\nE       assert ['lrmuyzrwryn...vryzmvrvtorw'] == ['mzwqnuoqyxu...plkqvzpmtoxy']\nE         \nE         At index 0 diff: 'lrmuyzrwrynyypmryszqvryzmvrvtorw' != 'mzwqnuoqyxuktmwqstonplkqvzpmtoxy'\nE         Use -v to get more diff\n\n/tests/test_final_state.py:301: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_final_state.py::test_nothing_else_was_published_or_rewritten",
+                "status": "passed",
+                "duration": 0.48190336699963154,
+                "start": 1786744523.468891,
+                "stop": 1786744523.95112,
+                "retries": 0,
+                "file_path": "test_final_state.py"
+            }
+        ]
+    }
+}

@@ -28,9 +28,12 @@ WORK = (
 
 
 # Exactly what environment/Dockerfile writes into `add the charge endpoint`,
-# byte for byte. The same six lines in the same order ship in all four fixtures
-# of this task set.
-GITIGNORE = "__pycache__/\n*.pyc\n.pytest_cache/\n*~\n*.swp\n*.swo\n"
+# byte for byte. The same seven lines in the same order ship in all four
+# fixtures of this task set -- sha256
+# 667e996c96b4b8fcd40525cb2e3b3026a1da94f3ca89eac16d6bf1d761b093ff. The
+# backslash on `\#*#` is load-bearing: a gitignore line starting with `#` is a
+# comment, so the unescaped spelling matches nothing at all.
+GITIGNORE = "__pycache__/\n*.pyc\n.pytest_cache/\n*~\n*.sw[a-p]\n\\#*#\n.#*\n"
 EARLIEST = "add the charge endpoint"
 
 def jj(*args):
@@ -208,14 +211,15 @@ def test_the_gitignore_is_in_force_from_the_earliest_commit():
     `add the charge endpoint` is the only commit below every path-set assertion
     in tests/test_final_state.py and an ancestor of both bookmarks, so
     committing the .gitignore there is what puts it in force everywhere the
-    grading looks. Moving it even one commit later would not fail a verifier
-    loudly -- it would change what
-    `test_nothing_else_was_published_or_rewritten`, a FLOORED test, sees on an
-    untouched image, and so surface as a shifted vacuity floor, which is a much
-    harder thing to read back to a cause. So it is asserted here instead, in
-    three steps, in the order they can break: the earliest commit is the one we
-    think it is; every other commit descends from it; and it carries this exact
-    .gitignore.
+    grading looks. Moving it even one commit later fails nothing and moves no
+    score -- measured on exactly that image, this task's vacuity floor is
+    unchanged, the same count and the same test names as the fixture as
+    shipped. That SILENCE is the reason it is asserted here: a move costs real
+    coverage and nothing in CI would ever report it. So it is checked in four
+    steps, in the order they can break: the earliest commit is the one we think
+    it is; every other commit descends from it; it carries this exact
+    .gitignore; and -- since being born there does not keep it there -- so does
+    every other commit.
     """
     earliest = lines("log", "-r", "roots(all() ~ root())", "--no-graph",
                      "-T", 'description.first_line() ++ "\\n"')
@@ -239,3 +243,26 @@ def test_the_gitignore_is_in_force_from_the_earliest_commit():
         f"The .gitignore in `{EARLIEST}` is {shown.stdout!r}; this fixture "
         f"ships {GITIGNORE!r}, identical across all four tasks in this set."
     )
+    # BIRTH IS NOT FORCE, and the three checks above only establish birth. They
+    # say the file was INTRODUCED in the earliest commit and that every commit
+    # descends from that one; neither stops a later commit from emptying,
+    # replacing or deleting it, after which every descendant inherits the hole
+    # and `@` is unprotected wherever the agent parks it. Measured: a control
+    # with these lines in commit 1 and the file truncated in commit 2 passes
+    # all three checks above and still costs a correct solve its full score.
+    # So read the file back out of EVERY commit -- which covers the heads, the
+    # commits the grading actually walks, as well as the root.
+    for row in lines("log", "-r", "all() ~ root()", "--no-graph",
+                     "-T", 'commit_id ++ "\\x1f" ++ description.first_line() ++ "\\n"'):
+        commit, _, description = row.partition("\x1f")
+        shown = jj("file", "show", "-r", commit, ".gitignore")
+        assert shown.returncode == 0, (
+            f"`{description}` ({commit[:12]}) has no .gitignore in its tree: "
+            f"{shown.stderr}. It is committed in `{EARLIEST}` and nothing in "
+            "this fixture may remove it -- see environment/Dockerfile."
+        )
+        assert shown.stdout == GITIGNORE, (
+            f"The .gitignore in `{description}` ({commit[:12]}) is "
+            f"{shown.stdout!r}; this fixture ships {GITIGNORE!r} in every "
+            "commit, identical across all four tasks in this set."
+        )

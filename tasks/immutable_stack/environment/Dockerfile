@@ -123,7 +123,7 @@ F
 # `test_the_stack_is_still_the_same_four_commits` grades by path set.
 #
 # This fixture ships no test file, so its pytest exposure is the weakest of the
-# four; it is closed the same way as the others because the cost is a six-line
+# four; it is closed the same way as the others because the cost is a seven-line
 # file that a real project has anyway. Editor leftovers are NOT weaker here: a
 # `src/client/retry.py~` or a vim swap file left next to a file the agent read
 # auto-tracks into whatever `@` is sitting on, with no test run needed at all.
@@ -132,24 +132,63 @@ F
 #
 # `__pycache__/` and `*~` are the load-bearing lines here; `*.pyc` covers the
 # bytecode `python3 -m compileall -b` writes beside the source instead of into
-# `__pycache__/`, and `*.swp`/`*.swo` cover vim. `.pytest_cache/` writes its own
+# `__pycache__/`. `*.sw[a-p]` covers vim, which rolls DOWN from `.swp` toward
+# `.swa` when a swap file is already in the way, so the fallbacks need the range
+# and not just `.swp`/`.swo` -- measured on the pinned binary, `.swp`, `.swo`,
+# `.swn`, `.swm` and `.swa` are ignored while `.swq` and `.swz` are still
+# tracked, so the character class is doing real work rather than matching by
+# accident. `\#*#` and `.#*` cover emacs autosaves and LOCK files, and the lock
+# file is the sharpest stray of the lot: emacs writes `.#charge.py` the moment a
+# file is OPENED for editing. No save, no test run -- an agent that merely
+# opened a file to read it has already paid.
+#
+# THE BACKSLASH ON `\#*#` IS NOT OPTIONAL. A gitignore line beginning with `#`
+# is a COMMENT, so the bare spelling covers nothing at all while looking like it
+# covers something, which is worse than omitting the line. Measured both ways on
+# the pinned binary: with `#*#` a `#charge.py#` comes back from `jj status` as
+# `A #charge.py#`; with `\#*#` it does not appear at all. `.#*` needs no escape
+# because it starts with a dot.
+#
+# There is deliberately NO `*.pyo`. It is a real exposure in principle -- jj
+# would snapshot one -- but CPython stopped writing `.pyo` at 3.5 and this
+# fixture runs 3.12, so the line would document a stray no agent here can
+# produce. The list is meant to say what agents actually leave behind, and a
+# pattern dead for eight years dilutes that.
+#
+# `.pytest_cache/` writes its own
 # `.gitignore` containing `*` and so already ignores itself; nothing rests on it.
 #
-# THE SIX LINES AND THEIR ORDER ARE SHARED with the other three fixtures in
-# this task set. Keep them identical; there is nothing task-specific here.
+# THE SEVEN LINES AND THEIR ORDER ARE SHARED with the other three fixtures in
+# this task set: sha256
+# 667e996c96b4b8fcd40525cb2e3b3026a1da94f3ca89eac16d6bf1d761b093ff.
+# Keep them identical; there is nothing task-specific here.
+#
+# Two mechanics, measured rather than assumed, because the placement note below
+# rests on both. FIRST, AN IGNORE RULE DOES NOT RETROACTIVELY UNTRACK: a file
+# already carried by a commit stays there when a pattern matching it is added
+# afterwards (measured -- a `#foo#` committed before the rule existed is still
+# in the tree, and `jj status` reports nothing to untrack). The rule has to be
+# in force BEFORE the stray appears, which is what makes placement a
+# correctness question rather than a tidiness one. SECOND, jj honours the file
+# even UNCOMMITTED (measured -- an uncommitted `.gitignore` already suppresses
+# a new match), so committing it into the first fixture commit is a realism
+# choice, not a mechanism requirement: a real project has one in its history.
 cat >.gitignore <<'F'
 __pycache__/
 *.pyc
 .pytest_cache/
 *~
-*.swp
-*.swo
+*.sw[a-p]
+\#*#
+.#*
 F
 # THE PLACEMENT IS LOAD-BEARING, not just tidy: `add the charge endpoint` is the
 # only commit below every path-set assertion in the verifier, so the .gitignore
 # is in force everywhere the grading looks. bootstrap/test_initial_state.py
-# asserts the file is present in this commit's tree so that a move fails loudly
-# in the bootstrap check rather than quietly in the verifier.
+# asserts the file is present in this commit's tree -- AND that every commit in
+# the repository still carries it byte for byte, since birth is not force and
+# nothing stops a later commit emptying it -- so that a move or a truncation
+# fails loudly in the bootstrap check rather than quietly in the verifier.
 jj commit -m "add the charge endpoint"
 
 cat >src/api/handlers.py <<'F'

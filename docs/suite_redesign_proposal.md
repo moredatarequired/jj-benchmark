@@ -1,12 +1,12 @@
 # Suite redesign: cut to 24 tasks, ten of them new
 
-> **STATUS: the cut half of this proposal has been executed. `tasks/` now holds 14
+> **STATUS: both halves of this proposal have been executed. `tasks/` now holds 24
 > directories, not 53.** Hugh approved the shipping-14 list in §5 and additionally
 > dropped the seven-task smoke tier this document parks there — "I don't know that we
 > really need to keep a smoke tier" — so all 39 non-shipping tasks were deleted in one
 > commit: the 26 in §3's cut table, the 6 in its merge table, and the 7 §5 demotes. The
-> "build 10 new" half is **not** done; the target of 24 stands, to be reached by
-> authoring on top of the 14.
+> "build 10 new" half is now done too: ten tasks were authored on top of the 14, so the
+> target of 24 has been reached.
 >
 > Everything below is left as it was written, which means it reads as a proposal about a
 > 53-task suite and cites `tasks/<name>/...` paths for tasks that no longer exist. Those

@@ -2,7 +2,7 @@
 
 This file rides along in the same tests/ directory harbor mounts read-only at
 /tests, exactly like vacuity_floor.json and bootstrap_anchor.json, so it needs
-no change to tests/test.sh -- which has to stay byte-identical across all 53
+no change to tests/test.sh -- which has to stay byte-identical across all 24
 tasks (scripts/lint_tasks.py enforces that by sha256).
 
 Verified, not assumed: pytest collects a conftest.py that sits beside the test
@@ -58,7 +58,7 @@ def bootstrap_anchor() -> str:
 
     Session-scoped so the jj calls happen once per run rather than once per
     test, and autouse so no task's test file has to opt in -- the point is that
-    all 53 get it without 53 edits.
+    all 24 get it without 24 edits.
     """
     note = assert_bootstrap_anchor()
     print(note)

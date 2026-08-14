@@ -10,11 +10,12 @@ You can view the upstream evaluation reports at [tabbyml.github.io/jj-benchmark]
 ## Project Structure
 
 - `tasks/`: Contains the benchmark tasks, each with its own instructions, bootstrap scripts, and tests.
-  **There are 14 of them.** The suite was 53; `docs/suite_redesign_proposal.md` is the
-  argument for cutting 39, and ROADMAP.md "What's done" #6 records the cut. New tasks are
-  authored on top of these 14 rather than alongside the old set, so **no measurement taken
-  before the cut describes the suite that exists now** — not the per-model baselines in
-  `results/`, not the numbers in ROADMAP.md, not upstream's leaderboard.
+  **There are 24 of them.** The suite was 53; `docs/suite_redesign_proposal.md` is the
+  argument for cutting 39, and ROADMAP.md "What's done" #6 records the cut. The ten tasks
+  authored since were built on top of the 14 that survived rather than alongside the old
+  set, so **no measurement taken before the cut describes the suite that exists now** — not
+  the per-model baselines in `results/`, not the numbers in ROADMAP.md, not upstream's
+  leaderboard.
 - `jobs/`: Stores the results of benchmark runs.
 - `scripts/`: Checks that run outside a benchmark run — task schema lint, post-run audit.
 - `site/`: A Next.js application to visualize benchmark results.
@@ -186,12 +187,13 @@ by `working_copy` (a workspace *name*, for an undescribed working-copy commit). 
 exempted change id may be absent **or** present; nothing else about the anchor is
 relaxed, and **the handover-operation check is never exempted on any task**, so
 wipe-and-rebuild is still caught everywhere. `may_be_divergent` is the separate flag for a
-task whose solve deliberately leaves one change divergent. No current task uses it —
-`concurrent_operations`, the task it was written for, was cut when the suite was reduced
-to 14 — but the divergence-shaped tasks on the roadmap will, so the schema keeps it.
+task whose solve deliberately leaves one change divergent. `concurrent_operations`, the
+task it was written for, was cut when the suite was reduced to 14; `divergent_change`,
+one of the ten authored since, uses it today — its fixture ships a change that is already
+divergent at handover.
 
 The file is optional — absent means "nothing this task asks for removes a bootstrap
-commit", which is true of 8 of the 14 tasks. `scripts/lint_tasks.py` enforces the schema
+commit", which is true of 16 of the 24 tasks. `scripts/lint_tasks.py` enforces the schema
 and prints every exemption and its reason on every CI run; `scripts/bootstrap_anchor.py
 --write/--check` cross-checks each entry against the measured bootstrap, so an entry that
 names nothing (or two things) fails on the host. A stale exemption file makes

@@ -11,7 +11,7 @@ run has burned an hour of GPU-free-but-not-free CI time:
   * a Dockerfile pinning a different jj version from every other task
   * a Dockerfile that does not bake in the pinned verifier dependencies
   * a tests/test.sh, tests/anchor.py or tests/conftest.py that has drifted out
-    of sync with its 52 identical siblings
+    of sync with the identical copy each of the other 23 tasks carries
   * a tests/conftest.py that no longer applies the bootstrap integrity anchor
   * a tests/anchor_exemptions.json (optional, hand-written) that does not follow
     the schema, or that exempts a bootstrap commit without saying why

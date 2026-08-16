@@ -1,0 +1,117 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 5 items
+
+../../../tests/test_final_state.py .F.F.                                 [100%]
+
+=================================== FAILURES ===================================
+______________ test_no_commit_outside_the_unmerged_tips_is_listed ______________
+
+    def test_no_commit_outside_the_unmerged_tips_is_listed():
+        """Nothing in the file that is not a tip outside main -- the "no extras" half.
+    
+        This is also where the two named wrong answers are failed by name, because
+        both of them fail HERE first, on something they added rather than on
+        something they left out. `heads(all())` returns `main` itself, which is a
+        head but is not a tip that is not yet part of main. `bookmarks()` returns
+        the two bookmarks that are already ancestors of main (`retry-backoff` and
+        `release/2.4`). Each is a mistake about a different word in the request, and
+        each puts a commit in the answer that the request excludes.
+    
+        Set INCLUSION rather than equality, so that the two halves of the answer are
+        scored independently: an incomplete answer whose every entry is a genuine
+        unmerged tip passes this and fails the two below.
+        """
+        actual = graded_answer()
+        readings = reference_tips()
+        if any(actual <= expected for _, expected in readings):
+            return
+    
+        main = resolve_one(graded(MAIN), "main")
+        merged = resolve_one(graded(MERGED_TIP), MERGED_TIP)
+        named = []
+        if main in actual:
+            named.append(
+                "  `main` itself is listed. It is a head, but it is not a tip that "
+                "is not yet part of main."
+            )
+        if merged in actual:
+            named.append(
+                "  the `retry-backoff` / `release/2.4` tip is listed; it was merged "
+                "into main before the task started."
+            )
+        inside = {c for c in actual if c in set(change_ids(f"::change_id({main})"))}
+        if inside - {main, merged}:
+            named.append(
+                "  these are already part of main: %s" % describe(inside - {main, merged})
+            )
+        report = [
+            f"  against the {label} reading, extra: {describe(actual - expected)}"
+            for label, expected in readings
+        ]
+>       raise AssertionError(
+            f"{ANSWER_FILE} lists commits that are not tips outside main.\n"
+            + "\n".join(named + report)
+            + "\nEvery expected set is recomputed in this repository at "
+            "verification time; none of them is a constant in the verifier."
+        )
+E       AssertionError: /home/user/checkout-api/unmerged.txt lists commits that are not tips outside main.
+E         the `retry-backoff` / `release/2.4` tip is listed; it was merged into main before the task started.
+E         against the live `heads(main..)` reading, extra: wrnullrt retry failed charges with backoff
+E         against the handover `heads((main..) & <bootstrap commits>)` reading, extra: wrnullrt retry failed charges with backoff
+E       Every expected set is recomputed in this repository at verification time; none of them is a constant in the verifier.
+
+/tests/test_final_state.py:577: AssertionError
+_____________________ test_the_unbookmarked_tip_is_listed ______________________
+
+    def test_the_unbookmarked_tip_is_listed():
+        """The second half of "nothing missing", and the one the task turns on.
+    
+        The settlement spike was handed over as a head outside main with no bookmark
+        on it. An agent that reads "tips" as "the bookmarks" produces an answer that
+        can pass the test above and still fail this one -- which is the distinction
+        the fixture was built to create, so it is scored on its own rather than
+        folded into a single all-or-nothing set comparison.
+    
+        "Carries no bookmark" is asked of the handover state, not of the repository
+        at verification time. An agent that solves the task and then bookmarks the
+        spike has still listed it; reading live `bookmarks()` here emptied this half
+        and failed that solve.
+        """
+        actual = graded_answer()
+        marked = handover_bookmarked_commits()
+        readings = reference_tips()
+        assert any(expected - marked for _, expected in readings), (
+            "the fixture no longer has an unbookmarked tip outside main, so this "
+            "test can no longer say anything. Fix the fixture or this file."
+        )
+        if any((expected - marked) <= actual for _, expected in readings):
+            return
+>       raise AssertionError(
+            f"{ANSWER_FILE} is missing tip(s) outside main that carry no bookmark. "
+            "A tip is a head of the history, not a bookmark.\n"
+            + "\n".join(
+                f"  against the {label} reading, missing: "
+                f"{describe((expected - marked) - actual)}"
+                for label, expected in readings
+            )
+        )
+E       AssertionError: /home/user/checkout-api/unmerged.txt is missing tip(s) outside main that carry no bookmark. A tip is a head of the history, not a bookmark.
+E         against the live `heads(main..)` reading, missing: qnlprulw spike: batch settlement into one payout
+E         against the handover `heads((main..) & <bootstrap commits>)` reading, missing: qnlprulw spike: batch settlement into one payout
+
+/tests/test_final_state.py:636: AssertionError
+==================================== PASSES ====================================
+______________ test_the_answer_file_is_a_clean_list_of_change_ids ______________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_the_answer_file_is_a_clean_list_of_change_ids
+PASSED ../../../tests/test_final_state.py::test_every_bookmarked_unmerged_tip_is_listed
+PASSED ../../../tests/test_final_state.py::test_the_history_was_not_pruned_to_shrink_the_answer
+FAILED ../../../tests/test_final_state.py::test_no_commit_outside_the_unmerged_tips_is_listed
+FAILED ../../../tests/test_final_state.py::test_the_unbookmarked_tip_is_listed
+========================= 2 failed, 3 passed in 1.26s ==========================
+reward 0.500000: 2 of 4 scored test(s) passed (test_every_bookmarked_unmerged_tip_is_listed, test_the_answer_file_is_a_clean_list_of_change_ids); 1 test(s) excluded as passing with no agent (test_the_history_was_not_pruned_to_shrink_the_answer)

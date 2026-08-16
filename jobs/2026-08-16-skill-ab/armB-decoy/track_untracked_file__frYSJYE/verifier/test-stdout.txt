@@ -1,0 +1,64 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 3 items
+
+../../../tests/test_final_state.py FFF                                   [100%]
+
+=================================== FAILURES ===================================
+___________________________ test_app_log_is_tracked ____________________________
+
+    def test_app_log_is_tracked():
+        graded = graded_commit()
+        tracked = jj("file", "list", "-r", graded).splitlines()
+>       assert "app.log" in tracked, (
+            f"`app.log` is not tracked in the commit this task handed over "
+            f"({graded}); it lists {sorted(tracked)}. Tracking the file adds it to "
+            "the working copy that was there, which is the commit that gets graded "
+            "however the agent finalizes it."
+        )
+E       AssertionError: `app.log` is not tracked in the commit this task handed over (lmmvyoxrkmtkwxxxxqnptpkttpwtnslr); it lists ['.gitignore']. Tracking the file adds it to the working copy that was there, which is the commit that gets graded however the agent finalizes it.
+E       assert 'app.log' in ['.gitignore']
+
+/tests/test_final_state.py:108: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+___________________________ test_gitignore_unchanged ___________________________
+
+    def test_gitignore_unchanged():
+        """The ignore rules are byte-for-byte the ones the bootstrap wrote.
+    
+        Checked both on disk and in the graded commit's tree. The old version only
+        asserted that `*.log` was still somewhere in the file, so appending
+        `!app.log` -- which auto-tracks app.log and is exactly what the instruction
+        forbids -- passed it.
+        """
+        gitignore_path = os.path.join(PROJECT_DIR, ".gitignore")
+>       assert os.path.isfile(gitignore_path), f".gitignore file {gitignore_path} does not exist."
+E       AssertionError: .gitignore file /home/user/project/.gitignore does not exist.
+E       assert False
+E        +  where False = <function isfile at 0x7f1fc4cfc220>('/home/user/project/.gitignore')
+E        +    where <function isfile at 0x7f1fc4cfc220> = <module 'posixpath' (frozen)>.isfile
+E        +      where <module 'posixpath' (frozen)> = os.path
+
+/tests/test_final_state.py:125: AssertionError
+_____________________________ test_commit_message ______________________________
+
+    def test_commit_message():
+        graded = graded_commit()
+        description = jj("log", "-r", graded, "--no-graph", "-T", "description")
+>       assert "Track log file" in description, (
+            f"Expected the description of the commit this task handed over "
+            f"({graded}) to contain 'Track log file', got: {description!r}"
+        )
+E       AssertionError: Expected the description of the commit this task handed over (lmmvyoxrkmtkwxxxxqnptpkttpwtnslr) to contain 'Track log file', got: ''
+E       assert 'Track log file' in ''
+
+/tests/test_final_state.py:144: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../tests/test_final_state.py::test_app_log_is_tracked - Assertio...
+FAILED ../../../tests/test_final_state.py::test_gitignore_unchanged - Asserti...
+FAILED ../../../tests/test_final_state.py::test_commit_message - AssertionErr...
+============================== 3 failed in 0.11s ===============================
+reward 0: none of the 2 scored test(s) passed (1 floored test(s) excluded). NOTE: floored test(s) test_gitignore_unchanged failed, which this score does not penalise -- see the CTRF report

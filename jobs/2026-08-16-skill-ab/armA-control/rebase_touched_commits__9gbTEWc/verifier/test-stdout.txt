@@ -1,0 +1,71 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 5 items
+
+../../../tests/test_final_state.py ..FF.                                 [100%]
+
+=================================== FAILURES ===================================
+___________ test_the_listed_ids_are_exactly_what_the_rebase_changed ____________
+
+    def test_the_listed_ids_are_exactly_what_the_rebase_changed():
+        """Set equality against the operation difference, computed here and now."""
+        op, expected = the_rebase()
+        actual = resolved_answer()
+>       assert actual == expected, (
+            f"{ANSWER_FILE} does not list the commits the rebase changed.\n"
+            f"  missing: {describe(expected - actual)}\n"
+            f"  extra:   {describe(actual - expected)}\n"
+            f"The expected set is recomputed at verification time by reading this "
+            f"repository at operation {op[:12]} and at its parent and taking the "
+            "commits whose commit id differs; it is not a constant in the verifier."
+        )
+E       AssertionError: /home/user/checkout-api/touched.txt does not list the commits the rebase changed.
+E           missing: (none)
+E           extra:   pruwnowk start on the daily settlement report
+E         The expected set is recomputed at verification time by reading this repository at operation 82a224fe23a2 and at its parent and taking the commits whose commit id differs; it is not a constant in the verifier.
+E       assert {'nkvttxvylpr...mwynxqzylkwz'} == {'nkvttxvylpr...mwynxqzylkwz'}
+E         
+E         Extra items in the left set:
+E         'pruwnowknuwwurmmsmrlovupqmvpvuru'
+E         Use -v to get more diff
+
+/tests/test_final_state.py:325: AssertionError
+________________ test_no_commit_made_after_the_rebase_is_listed ________________
+
+    def test_no_commit_made_after_the_rebase_is_listed():
+        """Named for the wrong solve it catches: reading the branch off `jj log`.
+    
+        The branch carries five commits and the rebase changed four, because the
+        fifth was made afterwards. `main..retry-backoff`, `main..@` and `main..`
+        all return that fifth commit, so every cheap current-graph answer includes
+        a commit that did not exist when the rebase ran. The other cheap error --
+        including main's own commit, which existed but was not moved -- is caught
+        here too.
+        """
+        op, expected = the_rebase()
+        at_rebase = set(visible_at(op))
+        actual = resolved_answer()
+        later = actual - at_rebase
+>       assert not later, (
+            f"{ANSWER_FILE} lists {describe(later)}, which did not exist when the "
+            "rebase ran. The current graph shows the branch as it is now, not what "
+            "the operation changed."
+        )
+E       AssertionError: /home/user/checkout-api/touched.txt lists pruwnowk start on the daily settlement report, which did not exist when the rebase ran. The current graph shows the branch as it is now, not what the operation changed.
+E       assert not {'pruwnowknuwwurmmsmrlovupqmvpvuru'}
+
+/tests/test_final_state.py:349: AssertionError
+==================================== PASSES ====================================
+_________________________ test_touched_txt_was_written _________________________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_touched_txt_was_written
+PASSED ../../../tests/test_final_state.py::test_each_line_holds_one_change_id
+PASSED ../../../tests/test_final_state.py::test_the_history_was_not_rewritten_to_shrink_the_answer
+FAILED ../../../tests/test_final_state.py::test_the_listed_ids_are_exactly_what_the_rebase_changed
+FAILED ../../../tests/test_final_state.py::test_no_commit_made_after_the_rebase_is_listed
+========================= 2 failed, 3 passed in 1.58s ==========================
+reward 0.500000: 2 of 4 scored test(s) passed (test_each_line_holds_one_change_id, test_touched_txt_was_written); 1 test(s) excluded as passing with no agent (test_the_history_was_not_rewritten_to_shrink_the_answer)

@@ -1,0 +1,154 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 7 items
+
+../../../tests/test_final_state.py F....FF                               [100%]
+
+=================================== FAILURES ===================================
+______________________________ test_history_shape ______________________________
+
+    def test_history_shape():
+        """Exactly the original four commits, in the original order, still exist.
+    
+        Empty undescribed commits are excluded from the comparison. They are what
+        `jj new` leaves behind, and an agent that starts a fresh change before
+        rewriting history -- see
+        assert_the_handover_working_copy_is_still_checked_out() -- adds one without
+        changing the history in any way a reviewer would call a change. This test is
+        floored, so it earns nothing; per tests/test.sh a failing floored test is
+        still enough to cap a correct solve below a full mark, so it must not fail
+        for something the task never asked about. A commit with content or with a
+        description is still counted, which is the case this is here for: work
+        parked in a fifth commit rather than folded into the one that dropped the
+        file.
+    
+        The snapshot is taken here as well as in the working-copy tests: the
+        bootstrap leaves notes.txt written but unsnapshotted, so without it the
+        handover `@` reads as empty-and-undescribed and would be filtered out of the
+        comparison it is supposed to be part of.
+        """
+        snapshot_working_copy()
+        scratch = '(empty() & description(exact:""))'
+        chain = descriptions(f"(::@ ~ root()) ~ {scratch}")
+>       assert chain == EXPECTED_DESCRIPTIONS, (
+            "The four commits above the root must still be, oldest first: "
+            f"{EXPECTED_DESCRIPTIONS}. Got: {chain}"
+        )
+E       AssertionError: The four commits above the root must still be, oldest first: ['Initial commit', 'remove legacy module', 'add logging', '']. Got: ['Initial commit', 'remove legacy module']
+E       assert ['Initial com...egacy module'] == ['Initial com... logging', '']
+E         
+E         Right contains 2 more items, first extra item: 'add logging'
+E         Use -v to get more diff
+
+/tests/test_final_state.py:233: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+___________________________ test_working_copy_intact ___________________________
+
+    def test_working_copy_intact():
+        """The working copy still adds notes.txt and nothing else."""
+>       handover = assert_the_handover_working_copy_is_still_checked_out()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/tests/test_final_state.py:332: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def assert_the_handover_working_copy_is_still_checked_out():
+        """The bootstrap's working-copy commit must still be `@` or an ancestor of it.
+    
+        This is the identity claim that makes the disk-level and working-copy-level
+        assertions below mean something: without it they are satisfied by any commit
+        with the right tree, including one fabricated from `root()`.
+    
+        It used to demand `@` BE that change. That is stricter than the task, and
+        strictly so: an agent that runs `jj new` at any point -- to keep the working
+        copy clean while it rewrites history, which is an ordinary jj habit and one
+        nothing in the request speaks against -- ends on a fresh empty change whose
+        parent is the handover commit. The mid-stack fix is then completely correct
+        and two of the six scored tests fail on where the agent happened to be
+        standing.
+    
+        Requiring the handover change to be on `@`'s ancestry keeps every property
+        that mattered. A fabricated stack built from `root()` and checked out is not
+        a descendant of the handover change, so it still cannot be what gets graded,
+        and each caller goes on to assert about the handover change itself rather
+        than about `@`.
+        """
+        snapshot_working_copy()
+        handover = handover_working_copy()
+>       assert change_ids(f"({handover}) & ::@"), (
+            f"The working copy the bootstrap handed over ({change_ids(handover)}) "
+            f"is not `@` ({change_ids('@')}) and is not an ancestor of it. Fixing "
+            "the mid-stack commit rebases the working copy and preserves its change "
+            "id, so that change has to still be the one checked out -- or the "
+            "parent of wherever the agent finished."
+        )
+E       AssertionError: The working copy the bootstrap handed over (['wsxkmkmuzswvzzvvroszqlwxwyuunwux']) is not `@` (['ktwylzroxmokwlulvzzwroqxpwxsoklq']) and is not an ancestor of it. Fixing the mid-stack commit rebases the working copy and preserves its change id, so that change has to still be the one checked out -- or the parent of wherever the agent finished.
+E       assert []
+E        +  where [] = change_ids('(wsxkmkmuzswvzzvvroszqlwxwyuunwux) & ::@')
+
+/tests/test_final_state.py:200: AssertionError
+____________________________ test_settings_on_disk _____________________________
+
+    def test_settings_on_disk():
+        """The checked-out tree really has the file back, not just the commits.
+    
+        The content check here is unavoidably a read off disk -- that is the whole
+        point of the test. What the anchor adds is the identity of the tree being
+        read: `@` has to still be the working-copy commit the bootstrap handed over,
+        so "the file is back on disk" cannot be satisfied by checking out a
+        fabricated commit that happens to contain it.
+        """
+>       assert_the_handover_working_copy_is_still_checked_out()
+
+/tests/test_final_state.py:357: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def assert_the_handover_working_copy_is_still_checked_out():
+        """The bootstrap's working-copy commit must still be `@` or an ancestor of it.
+    
+        This is the identity claim that makes the disk-level and working-copy-level
+        assertions below mean something: without it they are satisfied by any commit
+        with the right tree, including one fabricated from `root()`.
+    
+        It used to demand `@` BE that change. That is stricter than the task, and
+        strictly so: an agent that runs `jj new` at any point -- to keep the working
+        copy clean while it rewrites history, which is an ordinary jj habit and one
+        nothing in the request speaks against -- ends on a fresh empty change whose
+        parent is the handover commit. The mid-stack fix is then completely correct
+        and two of the six scored tests fail on where the agent happened to be
+        standing.
+    
+        Requiring the handover change to be on `@`'s ancestry keeps every property
+        that mattered. A fabricated stack built from `root()` and checked out is not
+        a descendant of the handover change, so it still cannot be what gets graded,
+        and each caller goes on to assert about the handover change itself rather
+        than about `@`.
+        """
+        snapshot_working_copy()
+        handover = handover_working_copy()
+>       assert change_ids(f"({handover}) & ::@"), (
+            f"The working copy the bootstrap handed over ({change_ids(handover)}) "
+            f"is not `@` ({change_ids('@')}) and is not an ancestor of it. Fixing "
+            "the mid-stack commit rebases the working copy and preserves its change "
+            "id, so that change has to still be the one checked out -- or the "
+            "parent of wherever the agent finished."
+        )
+E       AssertionError: The working copy the bootstrap handed over (['wsxkmkmuzswvzzvvroszqlwxwyuunwux']) is not `@` (['ktwylzroxmokwlulvzzwroqxpwxsoklq']) and is not an ancestor of it. Fixing the mid-stack commit rebases the working copy and preserves its change id, so that change has to still be the one checked out -- or the parent of wherever the agent finished.
+E       assert []
+E        +  where [] = change_ids('(wsxkmkmuzswvzzvvroszqlwxwyuunwux) & ::@')
+
+/tests/test_final_state.py:200: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_settings_restored_into_cleanup_commit
+PASSED ../../../tests/test_final_state.py::test_cleanup_commit_no_longer_deletes_settings
+PASSED ../../../tests/test_final_state.py::test_cleanup_commit_keeps_its_own_changes
+PASSED ../../../tests/test_final_state.py::test_later_commit_intact
+FAILED ../../../tests/test_final_state.py::test_history_shape - AssertionErro...
+FAILED ../../../tests/test_final_state.py::test_working_copy_intact - Asserti...
+FAILED ../../../tests/test_final_state.py::test_settings_on_disk - AssertionE...
+========================= 3 failed, 4 passed in 1.48s ==========================
+reward 0.666667: 4 of 6 scored test(s) passed (test_cleanup_commit_keeps_its_own_changes, test_cleanup_commit_no_longer_deletes_settings, test_later_commit_intact, test_settings_restored_into_cleanup_commit); 1 test(s) excluded as passing with no agent (test_history_shape). NOTE: floored test(s) test_history_shape failed, which this score does not penalise -- see the CTRF report

@@ -1,0 +1,47 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 4 items
+
+../../../tests/test_final_state.py ...F                                  [100%]
+
+=================================== FAILURES ===================================
+_________________ test_each_commit_still_carries_its_own_diff __________________
+
+    def test_each_commit_still_carries_its_own_diff():
+        """No collateral damage: the four diffs are where they were.
+    
+        Nobody asking for a conflict to be fixed is asking for their commits to be
+        reorganised, so this is the no-collateral-damage default rather than a
+        stated requirement. It is also the check that catches a resolution folded
+        into the wrong commit of the stack.
+        """
+        snapshot_working_copy()
+        for description, expected in OWN_PATHS.items():
+            cid = resolve_one(description)
+            out = jj_ok("diff", "-r", f"change_id({cid})", "--name-only")
+            changed = {line for line in out.splitlines() if line}
+>           assert changed == expected, (
+                f"`{description}` ({cid[:12]}) should change exactly "
+                f"{sorted(expected)}; it changes {sorted(changed)}."
+            )
+E           AssertionError: `note the retry budget in the changelog` (qspylsuoxwwx) should change exactly ['CHANGELOG.md']; it changes [].
+E           assert set() == {'CHANGELOG.md'}
+E             
+E             Extra items in the right set:
+E             'CHANGELOG.md'
+E             Use -v to get more diff
+
+/tests/test_final_state.py:504: AssertionError
+==================================== PASSES ====================================
+__________________ test_no_conflict_is_left_in_the_repository __________________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_no_conflict_is_left_in_the_repository
+PASSED ../../../tests/test_final_state.py::test_the_resolution_lives_where_the_conflict_started
+PASSED ../../../tests/test_final_state.py::test_the_stack_is_still_four_commits_with_both_sides_kept
+FAILED ../../../tests/test_final_state.py::test_each_commit_still_carries_its_own_diff
+========================= 1 failed, 3 passed in 0.37s ==========================
+reward 0.666667: 3 of 3 scored test(s) passed (test_no_conflict_is_left_in_the_repository, test_the_resolution_lives_where_the_conflict_started, test_the_stack_is_still_four_commits_with_both_sides_kept); 1 test(s) excluded as passing with no agent (test_each_commit_still_carries_its_own_diff). NOTE: floored test(s) test_each_commit_still_carries_its_own_diff failed, which this score does not penalise -- see the CTRF report

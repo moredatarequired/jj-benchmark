@@ -1,0 +1,146 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 8 items
+
+../../../tests/test_final_state.py .FFF.FF.                              [100%]
+
+=================================== FAILURES ===================================
+_________________________ test_discarded_files_absent __________________________
+
+    def test_discarded_files_absent():
+        """The discarded files are off the disk -- and out of the graded commit's tree.
+    
+        The disk half cannot be anchored: an anchor says which commits the bootstrap
+        created, and says nothing about the absence of a path in a directory. So the
+        same absence is also asked of the commit the recovered working copy has to be,
+        which is a claim about the bootstrap's own change rather than about whatever
+        files happen to be lying around.
+        """
+        discarded = ("file3.txt", "file4.txt", "file5.txt")
+        for name in discarded:
+>           assert not os.path.exists(os.path.join(PROJECT_DIR, name)), (
+                f"{name} should be gone from the working copy."
+            )
+E           AssertionError: file3.txt should be gone from the working copy.
+E           assert not True
+E            +  where True = <function exists at 0x7f59dbfe3560>('/home/user/project/file3.txt')
+E            +    where <function exists at 0x7f59dbfe3560> = <module 'posixpath' (frozen)>.exists
+E            +      where <module 'posixpath' (frozen)> = os.path
+E            +    and   '/home/user/project/file3.txt' = <function join at 0x7f59dbda0c20>('/home/user/project', 'file3.txt')
+E            +      where <function join at 0x7f59dbda0c20> = <module 'posixpath' (frozen)>.join
+E            +        where <module 'posixpath' (frozen)> = os.path
+
+/tests/test_final_state.py:242: AssertionError
+_________________ test_working_copy_tracks_only_the_kept_files _________________
+
+    def test_working_copy_tracks_only_the_kept_files():
+        """...and the working copy asked about is the anchored one, not whatever `@` is.
+    
+        `-r @` grades whichever commit happens to be checked out, so a fabricated
+        commit holding two files named file1.txt and file2.txt satisfied it. The
+        revset is the bootstrap's own change id instead.
+        """
+        change = recovered_changes()[RECOVERED_WORKING_COPY]
+        tracked = sorted(
+            path for path in jj("file", "list", "-r", change).splitlines() if path
+        )
+>       assert tracked == ["file1.txt", "file2.txt"], (
+            f"The commit the recovered working copy has to be ({change[:12]}) "
+            f"should contain file1.txt and file2.txt and nothing else, but it "
+            f"tracks {tracked}."
+        )
+E       AssertionError: The commit the recovered working copy has to be (ksztvqktvouy) should contain file1.txt and file2.txt and nothing else, but it tracks ['file1.txt', 'file2.txt', 'file3.txt'].
+E       assert ['file1.txt',..., 'file3.txt'] == ['file1.txt', 'file2.txt']
+E         
+E         Left contains one more item: 'file3.txt'
+E         Use -v to get more diff
+
+/tests/test_final_state.py:269: AssertionError
+______________________ test_discarded_commits_not_visible ______________________
+
+    def test_discarded_commits_not_visible():
+        """Nothing described `Commit 3`/`4`/`5`, and the anchored 4 and 5 are gone.
+    
+        The description half is requirement 2 as written. The change-id half is what
+        a description cannot say: `Commit 4` and `Commit 5` are named in this task's
+        anchor_exemptions.json as commits the solve is allowed to remove, and this is
+        where their removal is actually required rather than merely permitted.
+        """
+        revset = " | ".join(substring(description) for description in DISCARDED)
+        found = field(revset, 'commit_id.short(8) ++ " " ++ description.first_line()')
+>       assert not found, (
+            f"No commit described 'Commit 3', 'Commit 4' or 'Commit 5' should be "
+            f"visible any more, but these are: {found}."
+        )
+E       AssertionError: No commit described 'Commit 3', 'Commit 4' or 'Commit 5' should be visible any more, but these are: ['d8b8b258 Commit 5', 'c8229fd4 Commit 4', 'd84465d1 Commit 3'].
+E       assert not ['d8b8b258 Commit 5', 'c8229fd4 Commit 4', 'd84465d1 Commit 3']
+
+/tests/test_final_state.py:286: AssertionError
+___________ test_working_copy_is_the_commit_from_that_earlier_state ____________
+
+    def test_working_copy_is_the_commit_from_that_earlier_state():
+        """The working copy must be the same commit it was back then.
+    
+        This is what separates going back to the earlier state from editing history
+        forward into a similar-looking shape: abandoning the later commits, or
+        starting a fresh empty commit on top of `Commit 2`, leaves the working copy
+        on a different change.
+    
+        Both the working copy's own change id and its parent's are compared against
+        the anchor, so a repository that was rebuilt cannot supply its own answer.
+        """
+        changes = recovered_changes()
+        expected = changes[RECOVERED_WORKING_COPY]
+    
+        change = one("@", "change_id")
+>       assert change == expected, (
+            f"The working copy is change {change[:12]}, but the state being "
+            f"recovered had change {expected[:12]} checked out -- the commit the "
+            f"bootstrap went on to describe {RECOVERED_WORKING_COPY!r}. The "
+            f"repository was not returned to that state: a new or different "
+            f"working-copy commit is checked out."
+        )
+E       AssertionError: The working copy is change smynmvnysyoo, but the state being recovered had change ksztvqktvouy checked out -- the commit the bootstrap went on to describe 'Commit 3'. The repository was not returned to that state: a new or different working-copy commit is checked out.
+E       assert 'smynmvnysyoo...zrskmzkpqoznt' == 'ksztvqktvouy...suryuotkzxzpu'
+E         
+E         - ksztvqktvouyvtkqklwsuryuotkzxzpu
+E         + smynmvnysyoolylkwsqzrskmzkpqoznt
+
+/tests/test_final_state.py:342: AssertionError
+_____________ test_visible_history_is_exactly_the_recovered_state ______________
+
+    def test_visible_history_is_exactly_the_recovered_state():
+        """Four commits, and WHICH four: the anchored three plus jj's root commit.
+    
+        The count on its own accepts four commits none of which the bootstrap
+        created. Naming the three by change id is what makes this the recovered
+        state rather than a state of the right size.
+        """
+        commits = field("all()", 'commit_id.short(8) ++ " " ++ description.first_line()')
+>       assert len(commits) == 4, (
+            f"The repository should hold exactly four commits -- the root commit, "
+            f"'Commit 1', 'Commit 2' and the empty working-copy commit -- but "
+            f"{len(commits)} are visible: {commits}."
+        )
+E       AssertionError: The repository should hold exactly four commits -- the root commit, 'Commit 1', 'Commit 2' and the empty working-copy commit -- but 7 are visible: ['7cd83fd9 ', 'd8b8b258 Commit 5', 'c8229fd4 Commit 4', 'd84465d1 Commit 3', 'c514af43 Commit 2', 'c71827e3 Commit 1', '00000000 '].
+E       assert 7 == 4
+E        +  where 7 = len(['7cd83fd9 ', 'd8b8b258 Commit 5', 'c8229fd4 Commit 4', 'd84465d1 Commit 3', 'c514af43 Commit 2', 'c71827e3 Commit 1', ...])
+
+/tests/test_final_state.py:374: AssertionError
+==================================== PASSES ====================================
+________________ test_kept_files_present_with_original_contents ________________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds (3 commit(s) may be absent per /tests/anchor_exemptions.json)
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_kept_files_present_with_original_contents
+PASSED ../../../tests/test_final_state.py::test_kept_commits_are_the_original_commits
+PASSED ../../../tests/test_final_state.py::test_earlier_operations_are_still_recorded
+FAILED ../../../tests/test_final_state.py::test_discarded_files_absent - Asse...
+FAILED ../../../tests/test_final_state.py::test_working_copy_tracks_only_the_kept_files
+FAILED ../../../tests/test_final_state.py::test_discarded_commits_not_visible
+FAILED ../../../tests/test_final_state.py::test_working_copy_is_the_commit_from_that_earlier_state
+FAILED ../../../tests/test_final_state.py::test_visible_history_is_exactly_the_recovered_state
+========================= 5 failed, 3 passed in 0.49s ==========================
+reward 0: none of the 5 scored test(s) passed (3 floored test(s) excluded)

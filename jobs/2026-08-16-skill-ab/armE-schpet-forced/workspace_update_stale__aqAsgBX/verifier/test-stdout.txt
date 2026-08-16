@@ -1,0 +1,66 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 3 items
+
+../../../tests/test_final_state.py .FF                                   [100%]
+
+=================================== FAILURES ===================================
+___________________________ test_config_json_content ___________________________
+
+    def test_config_json_content():
+        config_path = os.path.join(PROJECT_DIR, "config.json")
+        assert os.path.isfile(config_path), f"Config file {config_path} is missing."
+        with open(config_path) as f:
+            content = json.load(f)
+        assert content.get("status") == "active", "Expected 'status' to be 'active' in config.json."
+        assert content.get("new") is True, "Expected 'new' to be true in config.json (should be preserved from workspace_b)."
+    
+>       assert_descends_from_the_handover("@-", "the committed change")
+
+/tests/test_final_state.py:101: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+revset = '@-', what = 'the committed change'
+
+    def assert_descends_from_the_handover(revset, what):
+        """THE anchored claim: `revset` is, or descends from, the handover working copy."""
+        handover = handover_working_copy()
+        found = change_ids(f"{handover} & ::({revset})")
+>       assert found == [handover], (
+            f"{what} does not descend from {handover[:12]}, the commit this "
+            "workspace's working copy was sitting on when the task was handed over. "
+            "That commit is where the other workspace's `update config` work landed, "
+            "so anything built somewhere else in the repository is not this task's "
+            "work -- it is a parallel history that only looks like it."
+        )
+E       AssertionError: the committed change does not descend from pokqlrwmsqmr, the commit this workspace's working copy was sitting on when the task was handed over. That commit is where the other workspace's `update config` work landed, so anything built somewhere else in the repository is not this task's work -- it is a parallel history that only looks like it.
+E       assert [] == ['pokqlrwmsqm...llpuxoqmyxrv']
+E         
+E         Right contains one more item: 'pokqlrwmsqmrzxooxxpnllpuxoqmyxrv'
+E         Use -v to get more diff
+
+/tests/test_final_state.py:77: AssertionError
+_____________________________ test_commit_message ______________________________
+
+    def test_commit_message():
+        result = subprocess.run(["jj", "--ignore-working-copy", "log", "-T", "description", "-r", "@-",
+                                 "--no-graph"], cwd=PROJECT_DIR, capture_output=True, text=True)
+        assert result.returncode == 0, "Failed to run 'jj log'"
+>       assert "Activate config" in result.stdout, "Expected commit message to contain 'Activate config'."
+E       AssertionError: Expected commit message to contain 'Activate config'.
+E       assert 'Activate config' in ''
+E        +  where '' = CompletedProcess(args=['jj', '--ignore-working-copy', 'log', '-T', 'description', '-r', '@-', '--no-graph'], returncode=0, stdout='', stderr='').stdout
+
+/tests/test_final_state.py:117: AssertionError
+==================================== PASSES ====================================
+_____________________________ test_no_stale_error ______________________________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_no_stale_error
+FAILED ../../../tests/test_final_state.py::test_config_json_content - Asserti...
+FAILED ../../../tests/test_final_state.py::test_commit_message - AssertionErr...
+========================= 2 failed, 1 passed in 0.16s ==========================
+reward 0.333333: 1 of 3 scored test(s) passed (test_no_stale_error); 0 test(s) excluded as passing with no agent (none)

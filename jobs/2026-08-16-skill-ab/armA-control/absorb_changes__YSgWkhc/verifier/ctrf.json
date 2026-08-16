@@ -1,0 +1,56 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 3,
+            "passed": 0,
+            "failed": 3,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1786907243.9013379,
+            "stop": 1786907244.0694723
+        },
+        "tests": [
+            {
+                "name": "test_final_state.py::test_working_copy_empty",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.049187267000434076,
+                "start": 1786907243.9142087,
+                "stop": 1786907243.9756575,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_working_copy_empty():\n        \"\"\"The working copy must carry no changes once the fixes have been absorbed.\n    \n        Asked structurally: the `empty` template keyword and the working copy's own\n        diff, rather than matching jj's English \"The working copy has no changes\".\n    \n        The working copy is anchored by RELATION, not identity: `jj absorb` keeps the\n        handover `@`, but the per-file `jj squash --into` route empties it and jj\n        abandons an emptied squash source, so tests/anchor_exemptions.json allows it\n        to disappear. What both routes DO guarantee is that `@` ends up at or above\n        the bootstrap's own \"Add feature A\" commit -- which a stack fabricated from\n        `root()` cannot.\n        \"\"\"\n        _snapshot_working_copy()\n        above = _rev_of_description(\"Add feature A\")\n>       assert _commit_ids(f\"descendants({above}) & @\"), (\n            f\"`@` is not the bootstrap's own 'Add feature A' commit ({above}) nor a \"\n            \"descendant of it, so the working copy whose changes were supposedly \"\n            \"distributed is not the one the task handed over.\"\n        )\nE       AssertionError: `@` is not the bootstrap's own 'Add feature A' commit (qnsmnnvzyytzrtpxnlqnxmknspzytxuz) nor a descendant of it, so the working copy whose changes were supposedly distributed is not the one the task handed over.\nE       assert []\nE        +  where [] = _commit_ids('descendants(qnsmnnvzyytzrtpxnlqnxmknspzytxuz) & @')\n\n/tests/test_final_state.py:190: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_final_state.py::test_feature_a_absorbed",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.042374320999897463,
+                "start": 1786907243.9760156,
+                "stop": 1786907244.02365,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_feature_a_absorbed():\n        \"\"\"The feature_a.py fix must land in the ancestor that last modified it.\n    \n        The old version only checked that feature_a.py *reads* \"Feature A fixed\" at\n        the commit described \"Add feature A\". Because `jj file show` shows the whole\n        tree at a revision, not that revision's own diff, squashing the working copy\n        straight into its parent satisfied that too -- so it could not tell absorb\n        apart from a plain squash. It now checks placement, in the commit the\n        BOOTSTRAP created.\n        \"\"\"\n>       _assert_absorbed(*ABSORB_TARGETS[0])\n\n/tests/test_final_state.py:213: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\npath = 'feature_a.py', marker = 'Feature A fixed'\ntarget_description = 'Initial commit'\n\n    def _assert_absorbed(path, marker, target_description):\n        \"\"\"The fix to `path` must live in the commit the bootstrap described so.\n    \n        Three assertions, all structural: that commit's own diff touches `path`,\n        its content carries the fix, and nothing between it and the working copy\n        touches `path` again. The last one is what rejects a working copy that was\n        simply squashed wholesale into its parent -- there the fix sits in one\n        commit for both files instead of in the ancestor that last modified each.\n        \"\"\"\n        _snapshot_working_copy()\n        target = _rev_of_description(target_description)\n        assert _commit_ids(target), (\n            f\"The commit the bootstrap described {target_description!r} ({target}) \"\n            \"does not resolve.\"\n        )\n    \n        assert path in _changed_paths(target), (\n            f\"The commit the bootstrap described {target_description!r} ({target}) does \"\n            f\"not modify {path}; its diff touches {_changed_paths(target)}. The {path} \"\n            \"fix was not absorbed into the ancestor that last modified it.\"\n        )\n>       assert marker in _file_content(target, path), (\n            f\"{path} at the commit the bootstrap described {target_description!r} \"\n            f\"({target}) does not contain {marker!r}; it contains:\\n\"\n            f\"{_file_content(target, path)}\"\n        )\nE       AssertionError: feature_a.py at the commit the bootstrap described 'Initial commit' (nnozltmlvrmrpunowpuukvqoyvmqlylt) does not contain 'Feature A fixed'; it contains:\nE         def feature_a():\nE             print('Feature A')\nE         \nE       assert 'Feature A fixed' in \"def feature_a():\\n    print('Feature A')\\n\"\nE        +  where \"def feature_a():\\n    print('Feature A')\\n\" = _file_content('nnozltmlvrmrpunowpuukvqoyvmqlylt', 'feature_a.py')\n\n/tests/test_final_state.py:162: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_final_state.py::test_feature_b_absorbed",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.04084608999983175,
+                "start": 1786907244.0239134,
+                "stop": 1786907244.0692859,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_feature_b_absorbed():\n        \"\"\"The feature_b.py fix must land in the ancestor that last modified it.\n    \n        The old version of this test passed on the untouched image: it read\n        feature_b.py at the commit described \"Add feature B\", which *is* the working\n        copy holding the un-absorbed fix, so \"Feature B fixed\" was there before the\n        operation as well as after. It asserted nothing.\n    \n        See ABSORB_TARGETS for why the commit that must receive this fix is the one\n        the bootstrap described \"Add feature A\".\n        \"\"\"\n>       _assert_absorbed(*ABSORB_TARGETS[1])\n\n/tests/test_final_state.py:227: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\npath = 'feature_b.py', marker = 'Feature B fixed'\ntarget_description = 'Add feature A'\n\n    def _assert_absorbed(path, marker, target_description):\n        \"\"\"The fix to `path` must live in the commit the bootstrap described so.\n    \n        Three assertions, all structural: that commit's own diff touches `path`,\n        its content carries the fix, and nothing between it and the working copy\n        touches `path` again. The last one is what rejects a working copy that was\n        simply squashed wholesale into its parent -- there the fix sits in one\n        commit for both files instead of in the ancestor that last modified each.\n        \"\"\"\n        _snapshot_working_copy()\n        target = _rev_of_description(target_description)\n        assert _commit_ids(target), (\n            f\"The commit the bootstrap described {target_description!r} ({target}) \"\n            \"does not resolve.\"\n        )\n    \n        assert path in _changed_paths(target), (\n            f\"The commit the bootstrap described {target_description!r} ({target}) does \"\n            f\"not modify {path}; its diff touches {_changed_paths(target)}. The {path} \"\n            \"fix was not absorbed into the ancestor that last modified it.\"\n        )\n        assert marker in _file_content(target, path), (\n            f\"{path} at the commit the bootstrap described {target_description!r} \"\n            f\"({target}) does not contain {marker!r}; it contains:\\n\"\n            f\"{_file_content(target, path)}\"\n        )\n        stragglers = _commit_ids(f'{target}..@ & files(root-file:\"{path}\")')\n>       assert not stragglers, (\n            f\"{path} is still modified by {len(stragglers)} commit(s) after the commit \"\n            f\"the bootstrap described {target_description!r}: {stragglers}. The fix has \"\n            f\"not been absorbed into the ancestor that last modified {path}.\"\n        )\nE       AssertionError: feature_b.py is still modified by 1 commit(s) after the commit the bootstrap described 'Add feature A': ['e8582a4279dabd23c1151c4b716b5c22544a0af7']. The fix has not been absorbed into the ancestor that last modified feature_b.py.\nE       assert not ['e8582a4279dabd23c1151c4b716b5c22544a0af7']\n\n/tests/test_final_state.py:168: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            }
+        ]
+    }
+}

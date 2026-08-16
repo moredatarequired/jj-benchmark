@@ -1,0 +1,54 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 4 items
+
+../../../tests/test_final_state.py .F..                                  [100%]
+
+=================================== FAILURES ===================================
+______________________ test_experiment_bookmark_retained _______________________
+
+    def test_experiment_bookmark_retained():
+        """`experiment` must still exist, on the abandoned commit's parent.
+    
+        With an anchor, the bookmark's target is compared by change id against the
+        bootstrap's own `commit A`: "the commit it points at mentions commit A" is a
+        claim about text, and `jj describe` can write that text onto anything.
+        """
+        expected = anchored_change(RETAINED_BOOKMARK_TARGET)
+        if not expected:
+            res = run_jj_cmd(["log", "-r", "experiment", "-T", "description"])
+            assert res.returncode == 0, "Bookmark 'experiment' should exist."
+            assert RETAINED_BOOKMARK_TARGET in res.stdout, (
+                f"Bookmark 'experiment' should point to {RETAINED_BOOKMARK_TARGET!r}."
+            )
+            return
+    
+        res = run_jj_cmd(["log", "-r", 'bookmarks(exact:"experiment")', "--no-graph",
+                          "-T", 'change_id ++ "\\n"'])
+        assert res.returncode == 0, "Bookmark 'experiment' should exist."
+        found = res.stdout.split()
+>       assert found == [expected], (
+            f"Bookmark 'experiment' points at {[c[:12] for c in found]}, expected the "
+            f"bootstrap's {RETAINED_BOOKMARK_TARGET!r} ({expected[:12]}) -- the parent "
+            "of the commit it pointed at before, which requirement 1 abandons."
+        )
+E       AssertionError: Bookmark 'experiment' points at [], expected the bootstrap's 'commit A' (krxpxupnkstt) -- the parent of the commit it pointed at before, which requirement 1 abandons.
+E       assert [] == ['krxpxupnkst...tostupwpoxsz']
+E         
+E         Right contains one more item: 'krxpxupnksttxqzxrkpytostupwpoxsz'
+E         Use -v to get more diff
+
+/tests/test_final_state.py:144: AssertionError
+==================================== PASSES ====================================
+__________________________ test_files_in_working_copy __________________________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds (2 commit(s) may be absent per /tests/anchor_exemptions.json)
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_files_in_working_copy
+PASSED ../../../tests/test_final_state.py::test_draft_bookmark_deleted
+PASSED ../../../tests/test_final_state.py::test_working_copy_description
+FAILED ../../../tests/test_final_state.py::test_experiment_bookmark_retained
+========================= 1 failed, 3 passed in 0.35s ==========================
+reward 0.750000: 3 of 4 scored test(s) passed (test_draft_bookmark_deleted, test_files_in_working_copy, test_working_copy_description); 0 test(s) excluded as passing with no agent (none)

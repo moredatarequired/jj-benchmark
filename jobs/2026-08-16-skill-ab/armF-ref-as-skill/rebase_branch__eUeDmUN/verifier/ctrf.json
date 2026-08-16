@@ -1,0 +1,53 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 3,
+            "passed": 1,
+            "failed": 2,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1786915505.8355231,
+            "stop": 1786915506.062842
+        },
+        "tests": [
+            {
+                "name": "test_final_state.py::test_feature_branch_rebased_onto_main",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.1398306839982979,
+                "start": 1786915505.8659165,
+                "stop": 1786915506.021063,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_feature_branch_rebased_onto_main():\n        \"\"\"Priority 1: feature-branch's commits must now sit on top of main.\n    \n        The old version of this test only counted the commits in\n        `main..feature-branch` and asserted the count was 2. That count is 2 before\n        the rebase as well -- the two feature commits are outside main's ancestry\n        whether they hang off `base` or off `main` -- so the headline assertion of\n        this task passed on the untouched image and measured nothing. Writing the\n        resolved two-line data.txt into the un-rebased commit scored 1.\n    \n        What actually distinguishes the rebased state is ancestry: `main` must be\n        an ancestor of `feature-branch`, and the root of the stack must have `main`\n        as its parent. Both are structural (commit ids from explicit revsets), so\n        nothing here depends on jj's human-readable prose. WHICH commits they are\n        comes from the anchor, because a bookmark is a pointer the agent can move\n        and ancestry between two moved pointers says nothing about identity.\n        \"\"\"\n        main_id = _one_commit_id(\"main\")\n        feature_id = _one_commit_id(\"feature-branch\")\n    \n        # Ancestry: this is the assertion the old test was missing entirely.\n        assert _commit_ids(\"main & ::feature-branch\") == [main_id], (\n            f\"main ({main_id}) is not an ancestor of feature-branch ({feature_id}): \"\n            \"feature-branch has not been rebased onto main.\"\n        )\n    \n        # The rebased stack is still the two feature commits -- not squashed away,\n        # not partially left behind on the old base.\n        stack = _commit_ids(\"main..feature-branch\")\n>       assert len(stack) == 2, (\n            f\"Expected exactly 2 commits in main..feature-branch, got {len(stack)}: {stack}\"\n        )\nE       AssertionError: Expected exactly 2 commits in main..feature-branch, got 1: ['247d09e88048aa07a31966c7af4ff78706a6538c']\nE       assert 1 == 2\nE        +  where 1 = len(['247d09e88048aa07a31966c7af4ff78706a6538c'])\n\n/tests/test_final_state.py:147: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_final_state.py::test_conflict_resolved_content",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.017062793998775305,
+                "start": 1786915506.0214136,
+                "stop": 1786915506.0460336,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_conflict_resolved_content():\n        \"\"\"Priority 1: Use jj CLI to check the content of data.txt in feature-branch.\n    \n        Compared as LINES, not as bytes. This was `result.stdout == \"Line from\n        main\\\\nLine from feature\\\\n\"`, which fails a resolution written without a\n        trailing newline -- `printf 'Line from main\\\\nLine from feature'`, or an\n        editor that does not add one. That is a POSIX line-ending detail, not the\n        conflict resolution the task is about, and no phrasing of the request makes\n        it discoverable. splitlines() keeps everything that is being measured: both\n        lines present, in that order, and nothing else in the file.\n        \"\"\"\n        expected_lines = [\"Line from main\", \"Line from feature\"]\n    \n        # Read at the bootstrap's own `feature commit 2`, which is what\n        # `feature-branch` has to point at, rather than at the bookmark itself.\n        head = anchored(FEATURE_2) or \"feature-branch\"\n        result = _jj(\"file\", \"show\", \"data.txt\", \"-r\", head)\n        assert result.returncode == 0, f\"'jj file show' failed: {result.stderr}\"\n>       assert result.stdout.splitlines() == expected_lines, (\n            f\"Expected data.txt at the head of the rebased stack ({head[:12]}) to \"\n            f\"contain exactly the lines {expected_lines}, got \"\n            f\"{result.stdout.splitlines()}\"\n        )\nE       AssertionError: Expected data.txt at the head of the rebased stack (mwtlnowuwnxu) to contain exactly the lines ['Line from main', 'Line from feature'], got ['Line from main']\nE       assert ['Line from main'] == ['Line from m...from feature']\nE         \nE         Right contains one more item: 'Line from feature'\nE         Use -v to get more diff\n\n/tests/test_final_state.py:204: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_final_state.py::test_no_unresolved_conflicts",
+                "status": "passed",
+                "duration": 0.015957982999680098,
+                "start": 1786915506.046303,
+                "stop": 1786915506.0626507,
+                "retries": 0,
+                "file_path": "test_final_state.py"
+            }
+        ]
+    }
+}

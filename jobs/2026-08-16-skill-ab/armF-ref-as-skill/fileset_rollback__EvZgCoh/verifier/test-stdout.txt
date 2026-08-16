@@ -1,0 +1,120 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 5 items
+
+../../../tests/test_final_state.py .FFF.                                 [100%]
+
+=================================== FAILURES ===================================
+_________________ test_the_rollback_did_not_reach_outside_src __________________
+
+    def test_the_rollback_did_not_reach_outside_src():
+        """The added file under src/ is gone; the work outside src/ is untouched.
+    
+        Two failures in one test because they are the same failure of aim -- a
+        rollback that is too narrow leaves `src/api/refunds.py` behind, one that is
+        too wide takes `CHANGELOG.md` and `tests/test_charge.py` with it, and
+        neither is what was asked for.
+        """
+        rev = graded_revision()
+        assert file_at(rev, ADDED_UNDER_SRC) is None, (
+            f"`{ADDED_UNDER_SRC}` is still in the working copy. It was added by the "
+            "uncommitted src/ work, so rolling that work back removes it -- "
+            "reverting only the files that were modified is not a rollback of src/."
+        )
+        for path, wanted in OUTSIDE_SRC.items():
+            found = file_at(rev, path)
+            assert found is not None, f"`{path}` is missing from the working copy."
+>           assert found == wanted, (
+                f"`{path}` is not under src/ and was not to be rolled back.\n"
+                f"  expected: {wanted!r}\n  found:    {found!r}"
+            )
+E           AssertionError: `tests/test_charge.py` is not under src/ and was not to be rolled back.
+E               expected: 'from api.charge import charge\n\n\ndef test_charge_posts_the_amount(fake_post):\n    charge("acct_1", "12.50")\n    assert fake_post.last["amount"] == "12.50"\n\n\ndef test_refund_posts_the_charge_id(fake_post):\n    refund("ch_1", "5.00")\n    assert fake_post.last["charge_id"] == "ch_1"\n'
+E               found:    'from api.charge import charge\n\n\ndef test_charge_posts_the_amount(fake_post):\n    charge("acct_1", "12.50")\n    assert fake_post.last["amount"] == "12.50"\n'
+E           assert 'from api.cha... == "12.50"\n' == 'from api.cha...] == "ch_1"\n'
+E             
+E             Skipping 143 identical leading characters in diff, use -v to show
+E               == "12.50"
+E             - 
+E             - 
+E             - def test_refund_posts_the_charge_id(fake_post):
+E             -     refund("ch_1", "5.00")
+E             -     assert fake_post.last["charge_id"] == "ch_1"
+
+/tests/test_final_state.py:351: AssertionError
+______________ test_the_working_copy_changes_exactly_what_is_left ______________
+
+    def test_the_working_copy_changes_exactly_what_is_left():
+        """The whole end state as one path set, recomputed against the base commit.
+    
+        Content tests can only speak about paths they name. This one speaks about
+        every path there is, so a solve that rolled src/ back correctly and then
+        left some other file lying around is caught, and so is one that reverted
+        something the request never mentioned.
+        """
+        rev = graded_revision()
+        base = graded_base()
+        found = changed_paths(f"change_id({base})", rev)
+>       assert found == REMAINING_CHANGES, (
+            "the working copy should now differ from `%s` in exactly these paths:\n"
+            "  expected: %s\n  found:    %s\n"
+            "(A rollback of src/ that spared the generated tree leaves the three "
+            "regenerated files plus the two edits that are not under src/.)"
+            % (BASE, sorted(REMAINING_CHANGES), sorted(found))
+        )
+E       AssertionError: the working copy should now differ from `let the http client read as well as write` in exactly these paths:
+E           expected: ['CHANGELOG.md', 'src/generated/models.py', 'src/generated/openapi_client.py', 'src/generated/webhooks.py', 'tests/test_charge.py']
+E           found:    ['CHANGELOG.md', 'src/generated/models.py', 'src/generated/openapi_client.py', 'src/generated/webhooks.py']
+E         (A rollback of src/ that spared the generated tree leaves the three regenerated files plus the two edits that are not under src/.)
+E       assert {'CHANGELOG.m.../webhooks.py'} == {'CHANGELOG.m...st_charge.py'}
+E         
+E         Extra items in the right set:
+E         'tests/test_charge.py'
+E         Use -v to get more diff
+
+/tests/test_final_state.py:373: AssertionError
+_______________ test_the_files_on_disk_are_the_rolled_back_ones ________________
+
+    def test_the_files_on_disk_are_the_rolled_back_ones():
+        """The user's checkout, not just the stored tree.
+    
+        A solve that rewrote history without touching the working directory would
+        leave the repository saying one thing and the developer's editor another.
+        """
+        graded_revision()
+        for path, wanted in list(BASE_SRC.items()) + list(GENERATED.items()) \
+                + list(OUTSIDE_SRC.items()) + list(UNTOUCHED.items()):
+            found = on_disk(path)
+            assert found is not None, f"{path} is missing from the working directory."
+>           assert found == wanted, (
+                f"{path} on disk does not match what the working copy should hold.\n"
+                f"  expected: {wanted!r}\n  found:    {found!r}"
+            )
+E           AssertionError: tests/test_charge.py on disk does not match what the working copy should hold.
+E               expected: 'from api.charge import charge\n\n\ndef test_charge_posts_the_amount(fake_post):\n    charge("acct_1", "12.50")\n    assert fake_post.last["amount"] == "12.50"\n\n\ndef test_refund_posts_the_charge_id(fake_post):\n    refund("ch_1", "5.00")\n    assert fake_post.last["charge_id"] == "ch_1"\n'
+E               found:    'from api.charge import charge\n\n\ndef test_charge_posts_the_amount(fake_post):\n    charge("acct_1", "12.50")\n    assert fake_post.last["amount"] == "12.50"\n'
+E           assert 'from api.cha... == "12.50"\n' == 'from api.cha...] == "ch_1"\n'
+E             
+E             Skipping 143 identical leading characters in diff, use -v to show
+E               == "12.50"
+E             - 
+E             - 
+E             - def test_refund_posts_the_charge_id(fake_post):
+E             -     refund("ch_1", "5.00")
+E             -     assert fake_post.last["charge_id"] == "ch_1"
+
+/tests/test_final_state.py:393: AssertionError
+==================================== PASSES ====================================
+_______________ test_the_rollback_stopped_at_the_generated_tree ________________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_the_rollback_stopped_at_the_generated_tree
+PASSED ../../../tests/test_final_state.py::test_the_committed_history_was_not_touched
+FAILED ../../../tests/test_final_state.py::test_the_rollback_did_not_reach_outside_src
+FAILED ../../../tests/test_final_state.py::test_the_working_copy_changes_exactly_what_is_left
+FAILED ../../../tests/test_final_state.py::test_the_files_on_disk_are_the_rolled_back_ones
+========================= 3 failed, 2 passed in 0.73s ==========================
+reward 0.250000: 1 of 4 scored test(s) passed (test_the_rollback_stopped_at_the_generated_tree); 1 test(s) excluded as passing with no agent (test_the_committed_history_was_not_touched)

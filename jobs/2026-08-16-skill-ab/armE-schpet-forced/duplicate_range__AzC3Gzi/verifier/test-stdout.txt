@@ -1,0 +1,56 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 4 items
+
+../../../tests/test_final_state.py .F..                                  [100%]
+
+=================================== FAILURES ===================================
+___________ test_the_copies_carry_the_same_changes_in_the_same_order ___________
+
+    def test_the_copies_carry_the_same_changes_in_the_same_order():
+        """Copy i changes what original i changed, and leaves the same bytes.
+    
+        This is where "in the same order" is graded. The copies cannot be matched
+        to their sources by description -- a description is text an agent can type
+        -- so they are matched positionally and then checked by content.
+        """
+        added, ordered = copies_in_order()
+        assert len(ordered) == 3, (
+            f"expected three copies in a line above `{RELEASE_TIP}`; found "
+            f"{len(ordered)}. {describe(added)}"
+        )
+        for position, (source_description, copy_cid) in enumerate(
+                zip(RUN, ordered), start=1):
+            source = resolve_one(source_description)
+            expected_paths = paths_changed(source)
+            found_paths = paths_changed(copy_cid)
+>           assert found_paths == expected_paths, (
+                f"copy {position} of 3 on the release branch ({copy_cid[:12]}) "
+                f"changes {sorted(found_paths)}; the {position}(st/nd/rd) commit of "
+                f"the run, `{source_description}`, changes "
+                f"{sorted(expected_paths)}. Either the order is wrong or this is "
+                "not a copy of that commit."
+            )
+E           AssertionError: copy 1 of 3 on the release branch (lroswvysklnk) changes ['tests/test_duplicate_keys.py']; the 1(st/nd/rd) commit of the run, `validate the duplicate-key format`, changes ['src/api/keys.py']. Either the order is wrong or this is not a copy of that commit.
+E           assert {'tests/test_...cate_keys.py'} == {'src/api/keys.py'}
+E             
+E             Extra items in the left set:
+E             'tests/test_duplicate_keys.py'
+E             Extra items in the right set:
+E             'src/api/keys.py'
+E             Use -v to get more diff
+
+/tests/test_final_state.py:363: AssertionError
+==================================== PASSES ====================================
+_______________ test_three_new_commits_sit_on_the_release_branch _______________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_three_new_commits_sit_on_the_release_branch
+PASSED ../../../tests/test_final_state.py::test_the_originals_are_still_on_main_untouched
+PASSED ../../../tests/test_final_state.py::test_nothing_else_in_the_repository_moved
+FAILED ../../../tests/test_final_state.py::test_the_copies_carry_the_same_changes_in_the_same_order
+========================= 1 failed, 3 passed in 0.82s ==========================
+reward 0.666667: 2 of 3 scored test(s) passed (test_the_originals_are_still_on_main_untouched, test_three_new_commits_sit_on_the_release_branch); 1 test(s) excluded as passing with no agent (test_nothing_else_in_the_repository_moved)

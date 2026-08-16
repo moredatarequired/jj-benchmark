@@ -1,0 +1,209 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 5 items
+
+../../../tests/test_final_state.py FFFF.                                 [100%]
+
+=================================== FAILURES ===================================
+______________ test_the_answer_file_is_a_clean_list_of_change_ids ______________
+
+    def test_the_answer_file_is_a_clean_list_of_change_ids():
+        """The format mark: one change id per line, each real, none repeated.
+    
+        One scored test rather than a precondition of the three content tests. As a
+        precondition it was a GATE: one repeated line or one stray token scored the
+        whole task 0, below `bookmarks()`, even when all four ids were right and
+        both slips are reachable by ordinary means (`jj log -r 'bookmarks() |
+        heads(main..)'` without `sort -u`; a concatenation of two revsets). As a
+        test it costs one mark of four -- the same as any single content mistake.
+    
+        It is also not a free mark for a well-formed lie, because it is the only
+        test here that does not look at the content of the answer and the three that
+        do are still gated on the file naming at least one real commit. A file of
+        prose fails this AND all three of those.
+        """
+        snapshot_working_copy()
+        text, lines = answer_lines()
+        assert lines, f"{ANSWER_FILE} is empty."
+        assert "<Error:" not in text, (
+            f"{ANSWER_FILE} contains a jj template runtime error rendered inline "
+            "(`<Error: ...>`), which jj 0.44 emits at exit 0. The file is not a "
+            "list of change ids."
+        )
+    
+        bad = [line for line in lines if not CHANGE_ID_RE.match(line)]
+>       assert not bad, (
+            f"{ANSWER_FILE} has {len(bad)} line(s) that are not a single change id: "
+            f"{bad[:5]}. Each id must be on its own line, with nothing else on it."
+        )
+E       AssertionError: /home/user/checkout-api/unmerged.txt has 1 line(s) that are not a single change id: ['mmtntsvzowvrrtqrzxwyyrmxrqksowxtztowrnuqulnwppquvwuxssxvuqvuwxqx']. Each id must be on its own line, with nothing else on it.
+E       assert not ['mmtntsvzowvrrtqrzxwyyrmxrqksowxtztowrnuqulnwppquvwuxssxvuqvuwxqx']
+
+/tests/test_final_state.py:503: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+______________ test_no_commit_outside_the_unmerged_tips_is_listed ______________
+
+    def test_no_commit_outside_the_unmerged_tips_is_listed():
+        """Nothing in the file that is not a tip outside main -- the "no extras" half.
+    
+        This is also where the two named wrong answers are failed by name, because
+        both of them fail HERE first, on something they added rather than on
+        something they left out. `heads(all())` returns `main` itself, which is a
+        head but is not a tip that is not yet part of main. `bookmarks()` returns
+        the two bookmarks that are already ancestors of main (`retry-backoff` and
+        `release/2.4`). Each is a mistake about a different word in the request, and
+        each puts a commit in the answer that the request excludes.
+    
+        Set INCLUSION rather than equality, so that the two halves of the answer are
+        scored independently: an incomplete answer whose every entry is a genuine
+        unmerged tip passes this and fails the two below.
+        """
+>       actual = graded_answer()
+                 ^^^^^^^^^^^^^^^
+
+/tests/test_final_state.py:550: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def graded_answer():
+        """The ids the file names -- the precondition of the three CONTENT tests.
+    
+        Deliberately weak, and deliberately not the same thing as the file being
+        well formed. Duplicates collapse and unresolvable tokens are dropped, so a
+        correct answer with an untidy line is graded on its content and pays for the
+        untidiness once, in test_the_answer_file_is_a_clean_list_of_change_ids
+        (see the module docstring for the measurement that forced this apart).
+    
+        What it still refuses to grade is output that names nothing: no file, an
+        empty file, or a file with no resolvable id in it. Those fail here, and
+        therefore fail all three content tests as well as the format test, which is
+        what keeps a nop agent and a garbage answer at exactly 0.
+    
+        Resolution rather than text comparison is the point of the last step: a
+        solve that prints 8-character ids, one that prints the full 32, and one that
+        pastes them in by hand are the same answer and are graded the same.
+        """
+        snapshot_working_copy()
+        _, lines = answer_lines()
+        assert lines, f"{ANSWER_FILE} is empty."
+        resolved = {found for found in (resolve_token(t) for t in lines) if found}
+>       assert resolved, (
+            f"{ANSWER_FILE} has {len(lines)} non-blank line(s) and not one of them "
+            "names a commit in this repository, so there is no answer here to "
+            f"grade. Lines: {lines[:5]}"
+        )
+E       AssertionError: /home/user/checkout-api/unmerged.txt has 1 non-blank line(s) and not one of them names a commit in this repository, so there is no answer here to grade. Lines: ['mmtntsvzowvrrtqrzxwyyrmxrqksowxtztowrnuqulnwppquvwuxssxvuqvuwxqx']
+E       assert set()
+
+/tests/test_final_state.py:425: AssertionError
+_________________ test_every_bookmarked_unmerged_tip_is_listed _________________
+
+    def test_every_bookmarked_unmerged_tip_is_listed():
+        """The first half of "nothing missing": the tips a bookmark pointed at.
+    
+        Three of the four were handed over bookmarked (`rate-limit`,
+        `oauth-refresh`, `idempotency`). Which commits those are comes from the
+        anchor's record of the HANDOVER state, not from live `bookmarks()`, so a
+        bookmark the agent created while working changes nothing here.
+        """
+>       actual = graded_answer()
+                 ^^^^^^^^^^^^^^^
+
+/tests/test_final_state.py:593: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def graded_answer():
+        """The ids the file names -- the precondition of the three CONTENT tests.
+    
+        Deliberately weak, and deliberately not the same thing as the file being
+        well formed. Duplicates collapse and unresolvable tokens are dropped, so a
+        correct answer with an untidy line is graded on its content and pays for the
+        untidiness once, in test_the_answer_file_is_a_clean_list_of_change_ids
+        (see the module docstring for the measurement that forced this apart).
+    
+        What it still refuses to grade is output that names nothing: no file, an
+        empty file, or a file with no resolvable id in it. Those fail here, and
+        therefore fail all three content tests as well as the format test, which is
+        what keeps a nop agent and a garbage answer at exactly 0.
+    
+        Resolution rather than text comparison is the point of the last step: a
+        solve that prints 8-character ids, one that prints the full 32, and one that
+        pastes them in by hand are the same answer and are graded the same.
+        """
+        snapshot_working_copy()
+        _, lines = answer_lines()
+        assert lines, f"{ANSWER_FILE} is empty."
+        resolved = {found for found in (resolve_token(t) for t in lines) if found}
+>       assert resolved, (
+            f"{ANSWER_FILE} has {len(lines)} non-blank line(s) and not one of them "
+            "names a commit in this repository, so there is no answer here to "
+            f"grade. Lines: {lines[:5]}"
+        )
+E       AssertionError: /home/user/checkout-api/unmerged.txt has 1 non-blank line(s) and not one of them names a commit in this repository, so there is no answer here to grade. Lines: ['mmtntsvzowvrrtqrzxwyyrmxrqksowxtztowrnuqulnwppquvwuxssxvuqvuwxqx']
+E       assert set()
+
+/tests/test_final_state.py:425: AssertionError
+_____________________ test_the_unbookmarked_tip_is_listed ______________________
+
+    def test_the_unbookmarked_tip_is_listed():
+        """The second half of "nothing missing", and the one the task turns on.
+    
+        The settlement spike was handed over as a head outside main with no bookmark
+        on it. An agent that reads "tips" as "the bookmarks" produces an answer that
+        can pass the test above and still fail this one -- which is the distinction
+        the fixture was built to create, so it is scored on its own rather than
+        folded into a single all-or-nothing set comparison.
+    
+        "Carries no bookmark" is asked of the handover state, not of the repository
+        at verification time. An agent that solves the task and then bookmarks the
+        spike has still listed it; reading live `bookmarks()` here emptied this half
+        and failed that solve.
+        """
+>       actual = graded_answer()
+                 ^^^^^^^^^^^^^^^
+
+/tests/test_final_state.py:627: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def graded_answer():
+        """The ids the file names -- the precondition of the three CONTENT tests.
+    
+        Deliberately weak, and deliberately not the same thing as the file being
+        well formed. Duplicates collapse and unresolvable tokens are dropped, so a
+        correct answer with an untidy line is graded on its content and pays for the
+        untidiness once, in test_the_answer_file_is_a_clean_list_of_change_ids
+        (see the module docstring for the measurement that forced this apart).
+    
+        What it still refuses to grade is output that names nothing: no file, an
+        empty file, or a file with no resolvable id in it. Those fail here, and
+        therefore fail all three content tests as well as the format test, which is
+        what keeps a nop agent and a garbage answer at exactly 0.
+    
+        Resolution rather than text comparison is the point of the last step: a
+        solve that prints 8-character ids, one that prints the full 32, and one that
+        pastes them in by hand are the same answer and are graded the same.
+        """
+        snapshot_working_copy()
+        _, lines = answer_lines()
+        assert lines, f"{ANSWER_FILE} is empty."
+        resolved = {found for found in (resolve_token(t) for t in lines) if found}
+>       assert resolved, (
+            f"{ANSWER_FILE} has {len(lines)} non-blank line(s) and not one of them "
+            "names a commit in this repository, so there is no answer here to "
+            f"grade. Lines: {lines[:5]}"
+        )
+E       AssertionError: /home/user/checkout-api/unmerged.txt has 1 non-blank line(s) and not one of them names a commit in this repository, so there is no answer here to grade. Lines: ['mmtntsvzowvrrtqrzxwyyrmxrqksowxtztowrnuqulnwppquvwuxssxvuqvuwxqx']
+E       assert set()
+
+/tests/test_final_state.py:425: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_the_history_was_not_pruned_to_shrink_the_answer
+FAILED ../../../tests/test_final_state.py::test_the_answer_file_is_a_clean_list_of_change_ids
+FAILED ../../../tests/test_final_state.py::test_no_commit_outside_the_unmerged_tips_is_listed
+FAILED ../../../tests/test_final_state.py::test_every_bookmarked_unmerged_tip_is_listed
+FAILED ../../../tests/test_final_state.py::test_the_unbookmarked_tip_is_listed
+========================= 4 failed, 1 passed in 0.52s ==========================
+reward 0: none of the 4 scored test(s) passed (1 floored test(s) excluded)

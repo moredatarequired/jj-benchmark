@@ -1,0 +1,94 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 5 items
+
+../../../tests/test_final_state.py FFF..                                 [100%]
+
+=================================== FAILURES ===================================
+____________________ test_the_squashed_commit_exists_again _____________________
+
+    def test_the_squashed_commit_exists_again():
+        """The commit the squash swallowed is visible, under its own change id.
+    
+        This is the identity claim, and it is the whole difference between undoing
+        the operation and re-creating something that looks like its result. jj mints
+        change ids randomly at commit creation, so a hand-rebuild -- `jj split` on
+        the combined commit, or a fresh commit with the same message and the same
+        files -- cannot produce this id. Nothing here reads a description.
+        """
+        snapshot_working_copy()
+        _, _, squashed_away, _ = the_mistaken_operation()
+        found = change_ids(f"change_id({squashed_away})")
+>       assert found, (
+            f"the commit the squash swallowed ({squashed_away[:12]}) is still not "
+            "in the repository. Re-creating a commit that looks like it is not the "
+            "same thing: jj generates change ids at commit creation, so only "
+            "reversing the operation that removed it brings this id back."
+        )
+E       AssertionError: the commit the squash swallowed (zwzwysqnxzvo) is still not in the repository. Re-creating a commit that looks like it is not the same thing: jj generates change ids at commit creation, so only reversing the operation that removed it brings this id back.
+E       assert []
+
+/tests/test_final_state.py:298: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+________________ test_the_recovered_commit_is_the_original_work ________________
+
+    def test_the_recovered_commit_is_the_original_work():
+        """It carries the diff it carried before the squash, in the same order.
+    
+        Compared against the repository as it stood at the operation before the
+        mistake -- read with `--at-op`, never against a constant in this file. The
+        order claim is that the commit it was squashed into is still its ancestor,
+        which is the order the two were made in.
+        """
+        snapshot_working_copy()
+        _, _, squashed_away, squashed_into = the_mistaken_operation()
+        before_op = pre_squash_op()
+        if not change_ids(f"change_id({squashed_away})"):
+>           raise AssertionError(
+                f"the squashed-away commit ({squashed_away[:12]}) is not visible, "
+                "so its content cannot be compared."
+            )
+E           AssertionError: the squashed-away commit (zwzwysqnxzvo) is not visible, so its content cannot be compared.
+
+/tests/test_final_state.py:322: AssertionError
+___________________ test_the_two_commits_are_separate_again ____________________
+
+    def test_the_two_commits_are_separate_again():
+        """The commit that swallowed the other carries only its own work again.
+    
+        This is the half of the request that a route touching only the operation
+        log gets for free and a hand-rebuild gets wrong: both original commits
+        edited src/api/charge.py, so no split by path can put the pieces back where
+        they came from.
+        """
+        snapshot_working_copy()
+        _, _, squashed_away, squashed_into = the_mistaken_operation()
+        before_op = pre_squash_op()
+        expected_paths = paths_changed(squashed_into, at_op=before_op)
+        actual_paths = paths_changed(squashed_into)
+>       assert actual_paths == expected_paths, (
+            f"`{describe([squashed_into])}` should be back to changing "
+            f"{sorted(expected_paths)}; it changes {sorted(actual_paths)}. While "
+            "it still carries the other commit's paths the squash has not been "
+            "undone."
+        )
+E       AssertionError: `wmrqunwm add idempotency keys to charge requests` should be back to changing ['src/api/charge.py']; it changes ['src/api/charge.py', 'src/api/handlers.py']. While it still carries the other commit's paths the squash has not been undone.
+E       assert {'src/api/cha.../handlers.py'} == {'src/api/charge.py'}
+E         
+E         Extra items in the left set:
+E         'src/api/handlers.py'
+E         Use -v to get more diff
+
+/tests/test_final_state.py:361: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_the_two_commits_made_afterwards_are_still_here
+PASSED ../../../tests/test_final_state.py::test_nothing_else_in_the_history_moved
+FAILED ../../../tests/test_final_state.py::test_the_squashed_commit_exists_again
+FAILED ../../../tests/test_final_state.py::test_the_recovered_commit_is_the_original_work
+FAILED ../../../tests/test_final_state.py::test_the_two_commits_are_separate_again
+========================= 3 failed, 2 passed in 1.62s ==========================
+reward 0: none of the 3 scored test(s) passed (2 floored test(s) excluded)

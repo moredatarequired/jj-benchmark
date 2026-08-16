@@ -1,0 +1,92 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 7,
+            "passed": 4,
+            "failed": 3,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1786908421.0140417,
+            "stop": 1786908421.3911953
+        },
+        "tests": [
+            {
+                "name": "test_final_state.py::test_history_shape",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.07141826400038553,
+                "start": 1786908421.0379896,
+                "stop": 1786908421.121455,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_history_shape():\n        \"\"\"Exactly the original four commits, in the original order, still exist.\n    \n        Empty undescribed commits are excluded from the comparison. They are what\n        `jj new` leaves behind, and an agent that starts a fresh change before\n        rewriting history -- see\n        assert_the_handover_working_copy_is_still_checked_out() -- adds one without\n        changing the history in any way a reviewer would call a change. This test is\n        floored, so it earns nothing; per tests/test.sh a failing floored test is\n        still enough to cap a correct solve below a full mark, so it must not fail\n        for something the task never asked about. A commit with content or with a\n        description is still counted, which is the case this is here for: work\n        parked in a fifth commit rather than folded into the one that dropped the\n        file.\n    \n        The snapshot is taken here as well as in the working-copy tests: the\n        bootstrap leaves notes.txt written but unsnapshotted, so without it the\n        handover `@` reads as empty-and-undescribed and would be filtered out of the\n        comparison it is supposed to be part of.\n        \"\"\"\n        snapshot_working_copy()\n        scratch = '(empty() & description(exact:\"\"))'\n        chain = descriptions(f\"(::@ ~ root()) ~ {scratch}\")\n>       assert chain == EXPECTED_DESCRIPTIONS, (\n            \"The four commits above the root must still be, oldest first: \"\n            f\"{EXPECTED_DESCRIPTIONS}. Got: {chain}\"\n        )\nE       AssertionError: The four commits above the root must still be, oldest first: ['Initial commit', 'remove legacy module', 'add logging', '']. Got: ['Initial commit', 'remove legacy module']\nE       assert ['Initial com...egacy module'] == ['Initial com... logging', '']\nE         \nE         Right contains 2 more items, first extra item: 'add logging'\nE         Use -v to get more diff\n\n/tests/test_final_state.py:233: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_final_state.py::test_settings_restored_into_cleanup_commit",
+                "status": "passed",
+                "duration": 0.035976310000478406,
+                "start": 1786908421.1217163,
+                "stop": 1786908421.157962,
+                "retries": 0,
+                "file_path": "test_final_state.py"
+            },
+            {
+                "name": "test_final_state.py::test_cleanup_commit_no_longer_deletes_settings",
+                "status": "passed",
+                "duration": 0.05341305000047214,
+                "start": 1786908421.1582217,
+                "stop": 1786908421.2119164,
+                "retries": 0,
+                "file_path": "test_final_state.py"
+            },
+            {
+                "name": "test_final_state.py::test_cleanup_commit_keeps_its_own_changes",
+                "status": "passed",
+                "duration": 0.053351807999661105,
+                "start": 1786908421.2122755,
+                "stop": 1786908421.265893,
+                "retries": 0,
+                "file_path": "test_final_state.py"
+            },
+            {
+                "name": "test_final_state.py::test_later_commit_intact",
+                "status": "passed",
+                "duration": 0.043803114999263926,
+                "start": 1786908421.2661595,
+                "stop": 1786908421.3102684,
+                "retries": 0,
+                "file_path": "test_final_state.py"
+            },
+            {
+                "name": "test_final_state.py::test_working_copy_intact",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.03313746200001333,
+                "start": 1786908421.3105705,
+                "stop": 1786908421.3496864,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_working_copy_intact():\n        \"\"\"The working copy still adds notes.txt and nothing else.\"\"\"\n>       handover = assert_the_handover_working_copy_is_still_checked_out()\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n/tests/test_final_state.py:332: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\n    def assert_the_handover_working_copy_is_still_checked_out():\n        \"\"\"The bootstrap's working-copy commit must still be `@` or an ancestor of it.\n    \n        This is the identity claim that makes the disk-level and working-copy-level\n        assertions below mean something: without it they are satisfied by any commit\n        with the right tree, including one fabricated from `root()`.\n    \n        It used to demand `@` BE that change. That is stricter than the task, and\n        strictly so: an agent that runs `jj new` at any point -- to keep the working\n        copy clean while it rewrites history, which is an ordinary jj habit and one\n        nothing in the request speaks against -- ends on a fresh empty change whose\n        parent is the handover commit. The mid-stack fix is then completely correct\n        and two of the six scored tests fail on where the agent happened to be\n        standing.\n    \n        Requiring the handover change to be on `@`'s ancestry keeps every property\n        that mattered. A fabricated stack built from `root()` and checked out is not\n        a descendant of the handover change, so it still cannot be what gets graded,\n        and each caller goes on to assert about the handover change itself rather\n        than about `@`.\n        \"\"\"\n        snapshot_working_copy()\n        handover = handover_working_copy()\n>       assert change_ids(f\"({handover}) & ::@\"), (\n            f\"The working copy the bootstrap handed over ({change_ids(handover)}) \"\n            f\"is not `@` ({change_ids('@')}) and is not an ancestor of it. Fixing \"\n            \"the mid-stack commit rebases the working copy and preserves its change \"\n            \"id, so that change has to still be the one checked out -- or the \"\n            \"parent of wherever the agent finished.\"\n        )\nE       AssertionError: The working copy the bootstrap handed over (['wsxkmkmuzswvzzvvroszqlwxwyuunwux']) is not `@` (['ktwylzroxmokwlulvzzwroqxpwxsoklq']) and is not an ancestor of it. Fixing the mid-stack commit rebases the working copy and preserves its change id, so that change has to still be the one checked out -- or the parent of wherever the agent finished.\nE       assert []\nE        +  where [] = change_ids('(wsxkmkmuzswvzzvvroszqlwxwyuunwux) & ::@')\n\n/tests/test_final_state.py:200: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_final_state.py::test_settings_on_disk",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.03350086000000374,
+                "start": 1786908421.3499146,
+                "stop": 1786908421.3909924,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_settings_on_disk():\n        \"\"\"The checked-out tree really has the file back, not just the commits.\n    \n        The content check here is unavoidably a read off disk -- that is the whole\n        point of the test. What the anchor adds is the identity of the tree being\n        read: `@` has to still be the working-copy commit the bootstrap handed over,\n        so \"the file is back on disk\" cannot be satisfied by checking out a\n        fabricated commit that happens to contain it.\n        \"\"\"\n>       assert_the_handover_working_copy_is_still_checked_out()\n\n/tests/test_final_state.py:357: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\n    def assert_the_handover_working_copy_is_still_checked_out():\n        \"\"\"The bootstrap's working-copy commit must still be `@` or an ancestor of it.\n    \n        This is the identity claim that makes the disk-level and working-copy-level\n        assertions below mean something: without it they are satisfied by any commit\n        with the right tree, including one fabricated from `root()`.\n    \n        It used to demand `@` BE that change. That is stricter than the task, and\n        strictly so: an agent that runs `jj new` at any point -- to keep the working\n        copy clean while it rewrites history, which is an ordinary jj habit and one\n        nothing in the request speaks against -- ends on a fresh empty change whose\n        parent is the handover commit. The mid-stack fix is then completely correct\n        and two of the six scored tests fail on where the agent happened to be\n        standing.\n    \n        Requiring the handover change to be on `@`'s ancestry keeps every property\n        that mattered. A fabricated stack built from `root()` and checked out is not\n        a descendant of the handover change, so it still cannot be what gets graded,\n        and each caller goes on to assert about the handover change itself rather\n        than about `@`.\n        \"\"\"\n        snapshot_working_copy()\n        handover = handover_working_copy()\n>       assert change_ids(f\"({handover}) & ::@\"), (\n            f\"The working copy the bootstrap handed over ({change_ids(handover)}) \"\n            f\"is not `@` ({change_ids('@')}) and is not an ancestor of it. Fixing \"\n            \"the mid-stack commit rebases the working copy and preserves its change \"\n            \"id, so that change has to still be the one checked out -- or the \"\n            \"parent of wherever the agent finished.\"\n        )\nE       AssertionError: The working copy the bootstrap handed over (['wsxkmkmuzswvzzvvroszqlwxwyuunwux']) is not `@` (['ktwylzroxmokwlulvzzwroqxpwxsoklq']) and is not an ancestor of it. Fixing the mid-stack commit rebases the working copy and preserves its change id, so that change has to still be the one checked out -- or the parent of wherever the agent finished.\nE       assert []\nE        +  where [] = change_ids('(wsxkmkmuzswvzzvvroszqlwxwyuunwux) & ::@')\n\n/tests/test_final_state.py:200: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            }
+        ]
+    }
+}

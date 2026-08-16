@@ -1,0 +1,51 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 5 items
+
+../../../tests/test_final_state.py ...F.                                 [100%]
+
+=================================== FAILURES ===================================
+_____________ test_main_and_everything_below_it_is_still_protected _____________
+
+    def test_main_and_everything_below_it_is_still_protected():
+        """main and its two ancestors are still in `immutable()`.
+    
+        Named for the wrong solve it catches: deleting the alias. That unblocks the
+        stack in one line and passes every other test here -- and because this
+        repository has no git remote, jj's default `immutable_heads()` expands to
+        `trunk() | tags() | untracked_remote_bookmarks()` with `trunk()` falling
+        back to `root()`, so main ends up protected by nothing at all. Measured on
+        jj 0.44.0.
+        """
+        snapshot_working_copy()
+        anchored = {description: resolve_one(description) for description in PROTECTED}
+        immutable = set(change_ids("immutable()"))
+        exposed = [
+            description for description, cid in anchored.items()
+            if cid not in immutable
+        ]
+>       assert not exposed, (
+            "main is no longer protected from rewrites: "
+            + describe([anchored[d] for d in exposed])
+            + f".\n`{MAIN_TIP}` is main, and the request was to keep it protected "
+            "while unblocking the stack -- not to turn the protection off."
+        )
+E       AssertionError: main is no longer protected from rewrites: qwsznrlq issue a nonce with every charge; xpltmzln route charges through handlers; systuwsu add the charge endpoint.
+E         `issue a nonce with every charge` is main, and the request was to keep it protected while unblocking the stack -- not to turn the protection off.
+E       assert not ['add the charge endpoint', 'route charges through handlers', 'issue a nonce with every charge']
+
+/tests/test_final_state.py:264: AssertionError
+==================================== PASSES ====================================
+_________________ test_the_commit_carries_the_new_description __________________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_the_commit_carries_the_new_description
+PASSED ../../../tests/test_final_state.py::test_no_commit_is_still_described_the_old_way
+PASSED ../../../tests/test_final_state.py::test_the_stack_can_be_rewritten_again
+PASSED ../../../tests/test_final_state.py::test_the_stack_is_still_the_same_four_commits
+FAILED ../../../tests/test_final_state.py::test_main_and_everything_below_it_is_still_protected
+========================= 1 failed, 4 passed in 0.71s ==========================
+reward 0.666667: 3 of 3 scored test(s) passed (test_no_commit_is_still_described_the_old_way, test_the_commit_carries_the_new_description, test_the_stack_can_be_rewritten_again); 2 test(s) excluded as passing with no agent (test_main_and_everything_below_it_is_still_protected, test_the_stack_is_still_the_same_four_commits). NOTE: floored test(s) test_main_and_everything_below_it_is_still_protected failed, which this score does not penalise -- see the CTRF report

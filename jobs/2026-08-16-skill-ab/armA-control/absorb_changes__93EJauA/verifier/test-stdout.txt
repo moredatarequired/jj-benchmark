@@ -1,0 +1,128 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 3 items
+
+../../../tests/test_final_state.py .FF                                   [100%]
+
+=================================== FAILURES ===================================
+___________________________ test_feature_a_absorbed ____________________________
+
+    def test_feature_a_absorbed():
+        """The feature_a.py fix must land in the ancestor that last modified it.
+    
+        The old version only checked that feature_a.py *reads* "Feature A fixed" at
+        the commit described "Add feature A". Because `jj file show` shows the whole
+        tree at a revision, not that revision's own diff, squashing the working copy
+        straight into its parent satisfied that too -- so it could not tell absorb
+        apart from a plain squash. It now checks placement, in the commit the
+        BOOTSTRAP created.
+        """
+>       _assert_absorbed(*ABSORB_TARGETS[0])
+
+/tests/test_final_state.py:213: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+path = 'feature_a.py', marker = 'Feature A fixed'
+target_description = 'Initial commit'
+
+    def _assert_absorbed(path, marker, target_description):
+        """The fix to `path` must live in the commit the bootstrap described so.
+    
+        Three assertions, all structural: that commit's own diff touches `path`,
+        its content carries the fix, and nothing between it and the working copy
+        touches `path` again. The last one is what rejects a working copy that was
+        simply squashed wholesale into its parent -- there the fix sits in one
+        commit for both files instead of in the ancestor that last modified each.
+        """
+        _snapshot_working_copy()
+        target = _rev_of_description(target_description)
+        assert _commit_ids(target), (
+            f"The commit the bootstrap described {target_description!r} ({target}) "
+            "does not resolve."
+        )
+    
+        assert path in _changed_paths(target), (
+            f"The commit the bootstrap described {target_description!r} ({target}) does "
+            f"not modify {path}; its diff touches {_changed_paths(target)}. The {path} "
+            "fix was not absorbed into the ancestor that last modified it."
+        )
+>       assert marker in _file_content(target, path), (
+            f"{path} at the commit the bootstrap described {target_description!r} "
+            f"({target}) does not contain {marker!r}; it contains:\n"
+            f"{_file_content(target, path)}"
+        )
+E       AssertionError: feature_a.py at the commit the bootstrap described 'Initial commit' (nnozltmlvrmrpunowpuukvqoyvmqlylt) does not contain 'Feature A fixed'; it contains:
+E         def feature_a():
+E             print('Feature A')
+E         
+E       assert 'Feature A fixed' in "def feature_a():\n    print('Feature A')\n"
+E        +  where "def feature_a():\n    print('Feature A')\n" = _file_content('nnozltmlvrmrpunowpuukvqoyvmqlylt', 'feature_a.py')
+
+/tests/test_final_state.py:162: AssertionError
+___________________________ test_feature_b_absorbed ____________________________
+
+    def test_feature_b_absorbed():
+        """The feature_b.py fix must land in the ancestor that last modified it.
+    
+        The old version of this test passed on the untouched image: it read
+        feature_b.py at the commit described "Add feature B", which *is* the working
+        copy holding the un-absorbed fix, so "Feature B fixed" was there before the
+        operation as well as after. It asserted nothing.
+    
+        See ABSORB_TARGETS for why the commit that must receive this fix is the one
+        the bootstrap described "Add feature A".
+        """
+>       _assert_absorbed(*ABSORB_TARGETS[1])
+
+/tests/test_final_state.py:227: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+path = 'feature_b.py', marker = 'Feature B fixed'
+target_description = 'Add feature A'
+
+    def _assert_absorbed(path, marker, target_description):
+        """The fix to `path` must live in the commit the bootstrap described so.
+    
+        Three assertions, all structural: that commit's own diff touches `path`,
+        its content carries the fix, and nothing between it and the working copy
+        touches `path` again. The last one is what rejects a working copy that was
+        simply squashed wholesale into its parent -- there the fix sits in one
+        commit for both files instead of in the ancestor that last modified each.
+        """
+        _snapshot_working_copy()
+        target = _rev_of_description(target_description)
+        assert _commit_ids(target), (
+            f"The commit the bootstrap described {target_description!r} ({target}) "
+            "does not resolve."
+        )
+    
+        assert path in _changed_paths(target), (
+            f"The commit the bootstrap described {target_description!r} ({target}) does "
+            f"not modify {path}; its diff touches {_changed_paths(target)}. The {path} "
+            "fix was not absorbed into the ancestor that last modified it."
+        )
+>       assert marker in _file_content(target, path), (
+            f"{path} at the commit the bootstrap described {target_description!r} "
+            f"({target}) does not contain {marker!r}; it contains:\n"
+            f"{_file_content(target, path)}"
+        )
+E       AssertionError: feature_b.py at the commit the bootstrap described 'Add feature A' (qnsmnnvzyytzrtpxnlqnxmknspzytxuz) does not contain 'Feature B fixed'; it contains:
+E         def feature_b():
+E             print('Feature B')
+E         
+E       assert 'Feature B fixed' in "def feature_b():\n    print('Feature B')\n"
+E        +  where "def feature_b():\n    print('Feature B')\n" = _file_content('qnsmnnvzyytzrtpxnlqnxmknspzytxuz', 'feature_b.py')
+
+/tests/test_final_state.py:162: AssertionError
+==================================== PASSES ====================================
+___________________________ test_working_copy_empty ____________________________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds (1 commit(s) may be absent per /tests/anchor_exemptions.json)
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_working_copy_empty
+FAILED ../../../tests/test_final_state.py::test_feature_a_absorbed - Assertio...
+FAILED ../../../tests/test_final_state.py::test_feature_b_absorbed - Assertio...
+========================= 2 failed, 1 passed in 0.23s ==========================
+reward 0.333333: 1 of 3 scored test(s) passed (test_working_copy_empty); 0 test(s) excluded as passing with no agent (none)

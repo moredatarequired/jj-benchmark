@@ -1,0 +1,89 @@
+# credscan allowlist -- jj-benchmark trial records
+#
+# WHAT THIS CAN AND CANNOT DO (corrected 2026-08-16; the previous wording
+# overclaimed).
+#
+# Applies ONLY to the generic [A-Za-z0-9_-]{32,} catch-all bucket. It is never
+# consulted for Section 1 specific-shape hits, Section 2 name-with-value hits,
+# or Section 3 live-credential hits.
+#
+# It was previously claimed that the allowlist "can NEVER suppress a
+# specific-shape secret". That was FALSE as written. Seven of the specific
+# VALUE patterns were `\b`-anchored, and two allowlist prefixes below end in a
+# word character. Gluing such a prefix onto a secret (`harbor_run_2026_AKIA...`,
+# `hb__ghp_...`) destroyed the `\b`, so the specific pattern never fired, the
+# residue fell through to the generic bucket, and THIS FILE then demoted it to
+# exit 0. Four such bypasses were demonstrated.
+#
+# What is true now (credscan.py "boundary-erosion guard"): every specific VALUE
+# pattern is also compiled with its outer `\b` anchors stripped. Each line is
+# swept with those relaxed patterns, and any relaxed match the strict pattern
+# did not also produce at the same offset is recorded as a FATAL
+# boundary-eroded hit (Section 1c). On top of that, before ANY token is demoted
+# -- by this allowlist, by a shape rule, or by the signature-field rule -- its
+# span is checked against those eroded spans, and an overlap REFUSES the
+# demotion. So the strengthened guarantee is:
+#
+#   An entry in this file cannot suppress anything whose shape matches one of
+#   the specific VALUE patterns, EVEN IF that shape has been glued to an
+#   allowlisted prefix or otherwise stripped of its word boundaries.
+#
+# The guarantee stops there, and deliberately so: it covers the specific VALUE
+# patterns only. A secret that matches none of them -- notably a bare UUID or a
+# bare 32/40-char hex digest, both common real API-key formats -- is still
+# demotable by the shape rules. See the LIMITATIONS block in credscan.py.
+#
+# Each entry must fully match the token (an implicit \Z is appended).
+# Every entry below was triaged by hand against arm A on 2026-08-16 and then
+# tightened to its observed content. Entries reported as UNUSED on a later run
+# should be deleted. Do NOT re-broaden these to open-ended [A-Za-z0-9_-]+ tails.
+
+# Harness prompt-fencing sentinel, lowercase form. Observed content on arm A:
+# exactly 384 hits, all of the form harbor_claude_code_instruction_<32 lc hex>.
+harbor_claude_code_instruction_[0-9a-f]{32}
+
+# Egress-control sidecar container ID. Observed content on arm A: exactly 2
+# hits, one distinct value, 16 lowercase hex after a double dash.
+harbor-docker-egress-control-sidecar--[0-9a-f]{16}
+
+# Per-trial short IDs, e.g. hb__c16a73df6519b82904ea731976a55c3c.
+# Observed content on arm A: all 192 hits are exactly 32 lowercase hex.
+hb__[0-9a-f]{32}
+
+# Trial directory slugs: <task_name>__<6-12 char base62 nonce>,
+# e.g. split_commit_interactive__Q2hoAtN. These are trial dir names and appear
+# in logs/manifests; the suffix is a collision-avoidance nonce.
+# The leading negative lookahead is a DENYLIST: a slug whose task-name part
+# contains a credential word cannot ride this rule. Without it,
+# apikey_prod__Qk7zPm2Xv was demoted.
+(?![a-z0-9_]*(?:key|token|secret|passw|cred|auth|pwd|bearer|private)[a-z0-9_]*__)[a-z][a-z0-9]*(?:_[a-z0-9]+)*__[A-Za-z0-9]{6,12}
+
+# Harness prompt-fencing sentinels, uppercase form, e.g.
+# HARBOR_CLAUDE_CODE_INSTRUCTION_54E79BFFFDD8443D971DCEA2E4394D28.
+# Judged narrow enough as-is (fixed HARBOR_ prefix + uppercase-only body).
+HARBOR_[A-Z_]+_[0-9A-F]{6,}
+
+# Arm/model result key in result.json. Observed content on arm A: exactly 1 hit
+# in 29.5 MiB, one literal value -- so it is pinned as a literal rather than a
+# <harness>__<model>__<section> shape. Other arms with other models will need
+# their own literal added here after triage; that is intentional friction.
+claude-code__claude-haiku-4-5-20251001__tasks
+
+# jj's own build hash, from the version banner the agent prints:
+#
+#     $ jj --version
+#     jj 0.44.0-af45d57de7163cc5f17f3df178a31577e4951ea3
+#
+# This is a PUBLIC release identifier -- the upstream jj-vcs/jj commit that
+# built the binary under test -- not a secret. It is pinned as a LITERAL, not
+# as a `0-[0-9a-f]{40}` shape: a literal names exactly one public value and can
+# never widen, whereas a shape would quietly cover every future 40-hex token
+# that happens to follow a version dot.
+#
+# The entry looks truncated but is not. The generic token class is
+# [A-Za-z0-9_-], so the `.` in `0.44.0-af45...` ends the previous token and the
+# match begins at the final `0-`. `0-af45...` IS the whole token; an entry
+# spelled `0.44.0-af45...` would never match one.
+#
+# Observed content on the final five-arm tree: 56 hits, one distinct value.
+0-af45d57de7163cc5f17f3df178a31577e4951ea3

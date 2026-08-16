@@ -1,0 +1,96 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 4 items
+
+../../../tests/test_final_state.py .FF.                                  [100%]
+
+=================================== FAILURES ===================================
+____________________ test_working_copy_description_updated _____________________
+
+    def test_working_copy_description_updated():
+        """Priority 1: the working copy is the new commit, and it sits in the right place."""
+>       assert_new_commit_sits_on_the_handover_tip()
+
+/tests/test_final_state.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def assert_new_commit_sits_on_the_handover_tip():
+        """`@`'s parent must be the bootstrap's own "Add file C" commit.
+    
+        The "Add file D" commit is created by the agent, so there is no bootstrap
+        change id for it. What the task fixes is its POSITION -- "on top of the current
+        working copy" -- and the handover working copy is the commit the bootstrap
+        described "Add file C". That is an anchored claim a stack fabricated from
+        `root()` cannot satisfy.
+        """
+        snapshot_working_copy()
+        tip = change_id_or_fallback(
+            "Add file C", 'description(substring:"Add file C")', repo=PROJECT_DIR)
+        parents = jj("log", "-r", "@", "--no-graph", "-T",
+                     'parents.map(|p| p.change_id()).join(" ") ++ "\\n"').split()
+        expected = change_ids(tip)
+>       assert parents == expected, (
+            f"`@` sits on parent change id(s) {parents}, but the new commit has to be "
+            f"created on top of the working copy the bootstrap handed over, which is "
+            f"its 'Add file C' commit {expected}."
+        )
+E       AssertionError: `@` sits on parent change id(s) ['nnmnynlqslqtxpwsmyururkzvyxuxumo'], but the new commit has to be created on top of the working copy the bootstrap handed over, which is its 'Add file C' commit ['xwqllqwzzsloxwxxklvpptrwqtlzsnxv'].
+E       assert ['nnmnynlqslq...urkzvyxuxumo'] == ['xwqllqwzzsl...ptrwqtlzsnxv']
+E         
+E         At index 0 diff: 'nnmnynlqslqtxpwsmyururkzvyxuxumo' != 'xwqllqwzzsloxwxxklvpptrwqtlzsnxv'
+E         Use -v to get more diff
+
+/tests/test_final_state.py:94: AssertionError
+________________________ test_d_txt_exists_and_content _________________________
+
+    def test_d_txt_exists_and_content():
+        """Priority 3 fallback: basic file existence and content check.
+    
+        The content is read off disk, which is the point of the test; what the anchor
+        adds is that the commit holding it descends from the bootstrap's own stack.
+        """
+>       assert_new_commit_sits_on_the_handover_tip()
+
+/tests/test_final_state.py:124: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def assert_new_commit_sits_on_the_handover_tip():
+        """`@`'s parent must be the bootstrap's own "Add file C" commit.
+    
+        The "Add file D" commit is created by the agent, so there is no bootstrap
+        change id for it. What the task fixes is its POSITION -- "on top of the current
+        working copy" -- and the handover working copy is the commit the bootstrap
+        described "Add file C". That is an anchored claim a stack fabricated from
+        `root()` cannot satisfy.
+        """
+        snapshot_working_copy()
+        tip = change_id_or_fallback(
+            "Add file C", 'description(substring:"Add file C")', repo=PROJECT_DIR)
+        parents = jj("log", "-r", "@", "--no-graph", "-T",
+                     'parents.map(|p| p.change_id()).join(" ") ++ "\\n"').split()
+        expected = change_ids(tip)
+>       assert parents == expected, (
+            f"`@` sits on parent change id(s) {parents}, but the new commit has to be "
+            f"created on top of the working copy the bootstrap handed over, which is "
+            f"its 'Add file C' commit {expected}."
+        )
+E       AssertionError: `@` sits on parent change id(s) ['nnmnynlqslqtxpwsmyururkzvyxuxumo'], but the new commit has to be created on top of the working copy the bootstrap handed over, which is its 'Add file C' commit ['xwqllqwzzsloxwxxklvpptrwqtlzsnxv'].
+E       assert ['nnmnynlqslq...urkzvyxuxumo'] == ['xwqllqwzzsl...ptrwqtlzsnxv']
+E         
+E         At index 0 diff: 'nnmnynlqslqtxpwsmyururkzvyxuxumo' != 'xwqllqwzzsloxwxxklvpptrwqtlzsnxv'
+E         Use -v to get more diff
+
+/tests/test_final_state.py:94: AssertionError
+==================================== PASSES ====================================
+______________________ test_commit_b_description_updated _______________________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_commit_b_description_updated
+PASSED ../../../tests/test_final_state.py::test_commit_c_still_exists
+FAILED ../../../tests/test_final_state.py::test_working_copy_description_updated
+FAILED ../../../tests/test_final_state.py::test_d_txt_exists_and_content - As...
+========================= 2 failed, 2 passed in 0.13s ==========================
+reward 0.333333: 1 of 3 scored test(s) passed (test_commit_b_description_updated); 1 test(s) excluded as passing with no agent (test_commit_c_still_exists)

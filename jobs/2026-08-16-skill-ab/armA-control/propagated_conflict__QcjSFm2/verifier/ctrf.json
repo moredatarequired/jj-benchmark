@@ -1,0 +1,65 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 4,
+            "passed": 1,
+            "failed": 3,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1786907168.070444,
+            "stop": 1786907168.3969264
+        },
+        "tests": [
+            {
+                "name": "test_final_state.py::test_no_conflict_is_left_in_the_repository",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.06698014400080865,
+                "start": 1786907168.086792,
+                "stop": 1786907168.1655486,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_no_conflict_is_left_in_the_repository():\n        \"\"\"`conflicts()` is empty -- everywhere, not just in the three that showed.\n    \n        This is the test the resolve-where-you-are-standing route fails: fixing the\n        working copy clears the tip and leaves the origin and the commit between\n        them conflicted. It is deliberately repo-wide rather than scoped to the\n        stack, because the propagation reached `@` too.\n        \"\"\"\n        snapshot_working_copy()\n        still = change_ids(\"conflicts()\")\n>       assert not still, (\n            \"the repository still holds conflicted commit(s): \"\n            f\"{describe(still)}.\\nA conflict resolved in a descendant does not \"\n            \"reach the commit it came from; resolving it where it started lets jj \"\n            \"carry the resolution up the stack on its own.\"\n        )\nE       AssertionError: the repository still holds conflicted commit(s): oszvvqkx stop retrying once the budget is spent; tyvuqqpq make the retry budget configurable.\nE         A conflict resolved in a descendant does not reach the commit it came from; resolving it where it started lets jj carry the resolution up the stack on its own.\nE       assert not ['oszvvqkxxlqnmwzyqutwwuwnlmlzlypz', 'tyvuqqpqpovorxntkqzwnolluqlrumkl']\n\n/tests/test_final_state.py:281: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_final_state.py::test_the_resolution_lives_where_the_conflict_started",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.02569005599934826,
+                "start": 1786907168.1657882,
+                "stop": 1786907168.196157,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_the_resolution_lives_where_the_conflict_started():\n        \"\"\"src/client/retry.py at the anchored origin commit, line by line.\n    \n        Compared against the one content that keeps both sides, rstripped per line\n        so trailing whitespace is not the difference between 1.0 and 0.\n        \"\"\"\n        snapshot_working_copy()\n        cid = resolve_one(ORIGIN)\n        content = file_at(f\"change_id({cid})\", CONFLICTED_PATH)\n        assert content is not None, (\n            f\"{CONFLICTED_PATH} is missing from `{ORIGIN}` ({cid[:12]}), the commit \"\n            \"the conflict started in.\"\n        )\n        found = [line.rstrip() for line in content.splitlines()]\n        expected = [line.rstrip() for line in RESOLVED_AT_ORIGIN.splitlines()]\n        if found == expected:\n            return\n        markers = [m for m in CONFLICT_MARKERS if any(m in line for line in found)]\n        if markers:\n>           raise AssertionError(\n                f\"`{ORIGIN}` ({cid[:12]}) is still conflicted: {CONFLICTED_PATH} \"\n                f\"there still carries conflict markers {markers}. The conflict \"\n                \"started in this commit, so this is where the resolution belongs.\"\n            )\nE           AssertionError: `make the retry budget configurable` (tyvuqqpqpovo) is still conflicted: src/client/retry.py there still carries conflict markers ['<<<<<<<', '>>>>>>>', '%%%%%%%', '+++++++']. The conflict started in this commit, so this is where the resolution belongs.\n\n/tests/test_final_state.py:308: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_final_state.py::test_the_stack_is_still_four_commits_with_both_sides_kept",
+                "status": "passed",
+                "duration": 0.09651631499991709,
+                "start": 1786907168.1964135,
+                "stop": 1786907168.293175,
+                "retries": 0,
+                "file_path": "test_final_state.py"
+            },
+            {
+                "name": "test_final_state.py::test_each_commit_still_carries_its_own_diff",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.09802889300044626,
+                "start": 1786907168.2934694,
+                "stop": 1786907168.396718,
+                "retries": 0,
+                "file_path": "test_final_state.py",
+                "trace": "def test_each_commit_still_carries_its_own_diff():\n        \"\"\"No collateral damage: the four diffs are where they were.\n    \n        Nobody asking for a conflict to be fixed is asking for their commits to be\n        reorganised, so this is the no-collateral-damage default rather than a\n        stated requirement. It is also the check that catches a resolution folded\n        into the wrong commit of the stack.\n        \"\"\"\n        snapshot_working_copy()\n        for description, expected in OWN_PATHS.items():\n            cid = resolve_one(description)\n            out = jj_ok(\"diff\", \"-r\", f\"change_id({cid})\", \"--name-only\")\n            changed = {line for line in out.splitlines() if line}\n>           assert changed == expected, (\n                f\"`{description}` ({cid[:12]}) should change exactly \"\n                f\"{sorted(expected)}; it changes {sorted(changed)}.\"\n            )\nE           AssertionError: `note the retry budget in the changelog` (qspylsuoxwwx) should change exactly ['CHANGELOG.md']; it changes ['CHANGELOG.md', 'src/client/retry.py'].\nE           assert {'CHANGELOG.m...ent/retry.py'} == {'CHANGELOG.md'}\nE             \nE             Extra items in the left set:\nE             'src/client/retry.py'\nE             Use -v to get more diff\n\n/tests/test_final_state.py:504: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            }
+        ]
+    }
+}

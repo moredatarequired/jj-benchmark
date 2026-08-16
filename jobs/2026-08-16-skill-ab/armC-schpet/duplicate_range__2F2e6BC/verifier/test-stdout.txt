@@ -1,0 +1,95 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 4 items
+
+../../../tests/test_final_state.py FFF.                                  [100%]
+
+=================================== FAILURES ===================================
+_______________ test_three_new_commits_sit_on_the_release_branch _______________
+
+    def test_three_new_commits_sit_on_the_release_branch():
+        """Exactly three, in one line, above where release/2.4 was.
+    
+        Named for the wrong solves it catches: copying the whole span above the
+        fork point (four commits, because `add a client-side rate limiter` sits
+        below the run), copying two of the three, and landing the copies as
+        siblings rather than as a chain.
+        """
+        added, ordered = copies_in_order()
+>       assert len(added) == 3, (
+            f"{len(added)} commit(s) descend from `{RELEASE_TIP}`, expected the "
+            f"three copies: {describe(added)}.\nThe run to copy is the three "
+            "commits about duplicate keys; the commits immediately below and above "
+            "it on main are about other things."
+        )
+E       AssertionError: 0 commit(s) descend from `pin the 2.4 dependency set`, expected the three copies: (none).
+E         The run to copy is the three commits about duplicate keys; the commits immediately below and above it on main are about other things.
+E       assert 0 == 3
+E        +  where 0 = len(set())
+
+/tests/test_final_state.py:320: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+___________ test_the_copies_carry_the_same_changes_in_the_same_order ___________
+
+    def test_the_copies_carry_the_same_changes_in_the_same_order():
+        """Copy i changes what original i changed, and leaves the same bytes.
+    
+        This is where "in the same order" is graded. The copies cannot be matched
+        to their sources by description -- a description is text an agent can type
+        -- so they are matched positionally and then checked by content.
+        """
+        added, ordered = copies_in_order()
+>       assert len(ordered) == 3, (
+            f"expected three copies in a line above `{RELEASE_TIP}`; found "
+            f"{len(ordered)}. {describe(added)}"
+        )
+E       AssertionError: expected three copies in a line above `pin the 2.4 dependency set`; found 0. (none)
+E       assert 0 == 3
+E        +  where 0 = len([])
+
+/tests/test_final_state.py:354: AssertionError
+________________ test_the_originals_are_still_on_main_untouched ________________
+
+    def test_the_originals_are_still_on_main_untouched():
+        """The run is still on main, with the commit ids the bootstrap gave it.
+    
+        Named for the wrong solve it catches, and the reason it is written as one
+        test rather than two: `jj rebase -r <the run> -d release/2.4` RELOCATES the
+        three commits, which leaves a release branch that satisfies the two tests
+        above and a main with a hole in it. Because a rebase preserves change ids,
+        the bootstrap anchor does not see it either. Asserting the originals alone
+        would not do: that assertion holds on an untouched image, so it would be
+        measured into the vacuity floor and excluded from scoring -- and the
+        relocation would then score full marks. So this test re-derives the copies
+        as well, and therefore fails on an untouched image, where there are none.
+    
+        The parent links are compared by COMMIT id, which is normally the wrong
+        thing to assert. It is safe on this task and only on this task: nothing the
+        request asks for rewrites these commits or any ancestor of them, so a
+        correct solve cannot move them and their commit ids cannot change. Where an
+        ancestor IS rewritten, jj rebases the descendants and mints new commit ids
+        while keeping the change ids, and the same assertion would fail every
+        correct solve.
+        """
+        added, _ = copies_in_order()
+>       assert len(added) == 3, (
+            f"nothing was copied onto the release branch: {len(added)} commit(s) "
+            f"descend from `{RELEASE_TIP}`. The originals staying put is only half "
+            "of the request."
+        )
+E       AssertionError: nothing was copied onto the release branch: 0 commit(s) descend from `pin the 2.4 dependency set`. The originals staying put is only half of the request.
+E       assert 0 == 3
+E        +  where 0 = len(set())
+
+/tests/test_final_state.py:405: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_nothing_else_in_the_repository_moved
+FAILED ../../../tests/test_final_state.py::test_three_new_commits_sit_on_the_release_branch
+FAILED ../../../tests/test_final_state.py::test_the_copies_carry_the_same_changes_in_the_same_order
+FAILED ../../../tests/test_final_state.py::test_the_originals_are_still_on_main_untouched
+========================= 3 failed, 1 passed in 0.30s ==========================
+reward 0: none of the 3 scored test(s) passed (1 floored test(s) excluded)

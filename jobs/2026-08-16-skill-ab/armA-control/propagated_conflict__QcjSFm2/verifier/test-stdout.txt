@@ -1,0 +1,98 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 4 items
+
+../../../tests/test_final_state.py FF.F                                  [100%]
+
+=================================== FAILURES ===================================
+__________________ test_no_conflict_is_left_in_the_repository __________________
+
+    def test_no_conflict_is_left_in_the_repository():
+        """`conflicts()` is empty -- everywhere, not just in the three that showed.
+    
+        This is the test the resolve-where-you-are-standing route fails: fixing the
+        working copy clears the tip and leaves the origin and the commit between
+        them conflicted. It is deliberately repo-wide rather than scoped to the
+        stack, because the propagation reached `@` too.
+        """
+        snapshot_working_copy()
+        still = change_ids("conflicts()")
+>       assert not still, (
+            "the repository still holds conflicted commit(s): "
+            f"{describe(still)}.\nA conflict resolved in a descendant does not "
+            "reach the commit it came from; resolving it where it started lets jj "
+            "carry the resolution up the stack on its own."
+        )
+E       AssertionError: the repository still holds conflicted commit(s): oszvvqkx stop retrying once the budget is spent; tyvuqqpq make the retry budget configurable.
+E         A conflict resolved in a descendant does not reach the commit it came from; resolving it where it started lets jj carry the resolution up the stack on its own.
+E       assert not ['oszvvqkxxlqnmwzyqutwwuwnlmlzlypz', 'tyvuqqpqpovorxntkqzwnolluqlrumkl']
+
+/tests/test_final_state.py:281: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+_____________ test_the_resolution_lives_where_the_conflict_started _____________
+
+    def test_the_resolution_lives_where_the_conflict_started():
+        """src/client/retry.py at the anchored origin commit, line by line.
+    
+        Compared against the one content that keeps both sides, rstripped per line
+        so trailing whitespace is not the difference between 1.0 and 0.
+        """
+        snapshot_working_copy()
+        cid = resolve_one(ORIGIN)
+        content = file_at(f"change_id({cid})", CONFLICTED_PATH)
+        assert content is not None, (
+            f"{CONFLICTED_PATH} is missing from `{ORIGIN}` ({cid[:12]}), the commit "
+            "the conflict started in."
+        )
+        found = [line.rstrip() for line in content.splitlines()]
+        expected = [line.rstrip() for line in RESOLVED_AT_ORIGIN.splitlines()]
+        if found == expected:
+            return
+        markers = [m for m in CONFLICT_MARKERS if any(m in line for line in found)]
+        if markers:
+>           raise AssertionError(
+                f"`{ORIGIN}` ({cid[:12]}) is still conflicted: {CONFLICTED_PATH} "
+                f"there still carries conflict markers {markers}. The conflict "
+                "started in this commit, so this is where the resolution belongs."
+            )
+E           AssertionError: `make the retry budget configurable` (tyvuqqpqpovo) is still conflicted: src/client/retry.py there still carries conflict markers ['<<<<<<<', '>>>>>>>', '%%%%%%%', '+++++++']. The conflict started in this commit, so this is where the resolution belongs.
+
+/tests/test_final_state.py:308: AssertionError
+_________________ test_each_commit_still_carries_its_own_diff __________________
+
+    def test_each_commit_still_carries_its_own_diff():
+        """No collateral damage: the four diffs are where they were.
+    
+        Nobody asking for a conflict to be fixed is asking for their commits to be
+        reorganised, so this is the no-collateral-damage default rather than a
+        stated requirement. It is also the check that catches a resolution folded
+        into the wrong commit of the stack.
+        """
+        snapshot_working_copy()
+        for description, expected in OWN_PATHS.items():
+            cid = resolve_one(description)
+            out = jj_ok("diff", "-r", f"change_id({cid})", "--name-only")
+            changed = {line for line in out.splitlines() if line}
+>           assert changed == expected, (
+                f"`{description}` ({cid[:12]}) should change exactly "
+                f"{sorted(expected)}; it changes {sorted(changed)}."
+            )
+E           AssertionError: `note the retry budget in the changelog` (qspylsuoxwwx) should change exactly ['CHANGELOG.md']; it changes ['CHANGELOG.md', 'src/client/retry.py'].
+E           assert {'CHANGELOG.m...ent/retry.py'} == {'CHANGELOG.md'}
+E             
+E             Extra items in the left set:
+E             'src/client/retry.py'
+E             Use -v to get more diff
+
+/tests/test_final_state.py:504: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_the_stack_is_still_four_commits_with_both_sides_kept
+FAILED ../../../tests/test_final_state.py::test_no_conflict_is_left_in_the_repository
+FAILED ../../../tests/test_final_state.py::test_the_resolution_lives_where_the_conflict_started
+FAILED ../../../tests/test_final_state.py::test_each_commit_still_carries_its_own_diff
+========================= 3 failed, 1 passed in 0.33s ==========================
+reward 0.333333: 1 of 3 scored test(s) passed (test_the_stack_is_still_four_commits_with_both_sides_kept); 1 test(s) excluded as passing with no agent (test_each_commit_still_carries_its_own_diff). NOTE: floored test(s) test_each_commit_still_carries_its_own_diff failed, which this score does not penalise -- see the CTRF report

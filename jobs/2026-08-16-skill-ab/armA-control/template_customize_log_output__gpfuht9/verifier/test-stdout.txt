@@ -1,0 +1,89 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 2 items
+
+../../../tests/test_final_state.py FF                                    [100%]
+
+=================================== FAILURES ===================================
+________________________ test_template_alias_configured ________________________
+
+    def test_template_alias_configured():
+        """The alias exists under the required name and names the required pieces.
+    
+        Tolerant of how the value was quoted. `jj config get` returns the value
+        after TOML decoding, so an alias written with `jj config set` and a
+        single-escaped basic string arrives with a real newline where a
+        hand-written literal string arrives with a backslash and an `n`. Both spell
+        the same jj template, so the real newline is normalised back before the
+        text is inspected.
+        """
+        result = jj("config", "get", CONFIG_KEY)
+        assert result.returncode == 0, (
+            f"`jj config get {CONFIG_KEY}` failed, so no template alias named "
+            f"{ALIAS!r} is configured: {result.stderr.strip()}"
+        )
+    
+        value = result.stdout.strip("\n")
+        # A real 0x0A inside the value is a TOML-decoded `\n` escape; put it back
+        # so that both ways of writing the same template compare equal here.
+        normalized = value.replace("\n", "\\n")
+    
+        assert "change_id.short()" in normalized, (
+            f"Alias {ALIAS!r} does not use change_id.short(): {value!r}"
+        )
+        assert "description.first_line()" in normalized, (
+            f"Alias {ALIAS!r} does not use description.first_line(): {value!r}"
+        )
+        assert '" | "' in normalized or "' | '" in normalized, (
+            f"Alias {ALIAS!r} is missing the ' | ' separator: {value!r}"
+        )
+>       assert '"\\n"' in normalized or "'\\n'" in normalized, (
+            f"Alias {ALIAS!r} does not end its line with a newline: {value!r}"
+        )
+E       AssertionError: Alias 'log_custom' does not end its line with a newline: 'change_id.short() ++ " | " ++ description.first_line()'
+E       assert ('"\\n"' in 'change_id.short() ++ " | " ++ description.first_line()' or "'\\n'" in 'change_id.short() ++ " | " ++ description.first_line()')
+
+/tests/test_final_state.py:113: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+____________________ test_alias_renders_the_required_format ____________________
+
+    def test_alias_renders_the_required_format():
+        """The alias renders exactly what the instruction asks for.
+    
+        Rendered output is compared against the specified template applied to the
+        same revisions, so this is indifferent to how the alias was quoted, which
+        config layer it lives in, and whether it was written by `jj config set` or
+        by hand -- and it is not indifferent to any part of the required format.
+        """
+        actual = jj("log", "-r", "all()", "--no-graph", "-T", ALIAS)
+        assert actual.returncode == 0, (
+            f"`jj log -T {ALIAS}` failed, so the template alias is not usable: "
+            f"{actual.stderr.strip()}"
+        )
+    
+        expected = jj("log", "-r", "all()", "--no-graph", "-T", REQUIRED_TEMPLATE)
+        assert expected.returncode == 0, (
+            f"the verifier's own reference template failed to render: "
+            f"{expected.stderr.strip()}"
+        )
+    
+>       assert actual.stdout == expected.stdout, (
+            f"`jj log -T {ALIAS}` rendered {actual.stdout!r}, but the required "
+            f"template ({REQUIRED_TEMPLATE}) renders {expected.stdout!r}"
+        )
+E       AssertionError: `jj log -T log_custom` rendered 'lzzpsylymvsl | zzzzzzzzzzzz | ', but the required template (change_id.short() ++ " | " ++ description.first_line() ++ "\n") renders 'lzzpsylymvsl | \nzzzzzzzzzzzz | \n'
+E       assert 'lzzpsylymvsl...zzzzzzzzzz | ' == 'lzzpsylymvsl...zzzzzzzz | \n'
+E         
+E         + lzzpsylymvsl | zzzzzzzzzzzz | 
+E         - lzzpsylymvsl | 
+E         - zzzzzzzzzzzz |
+
+/tests/test_final_state.py:138: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../tests/test_final_state.py::test_template_alias_configured - A...
+FAILED ../../../tests/test_final_state.py::test_alias_renders_the_required_format
+============================== 2 failed in 0.09s ===============================
+reward 0: none of the 2 scored test(s) passed (0 floored test(s) excluded)

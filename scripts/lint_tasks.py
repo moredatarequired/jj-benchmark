@@ -10,6 +10,8 @@ run has burned an hour of GPU-free-but-not-free CI time:
   * a bootstrap/task.json whose task_description has drifted from instruction.md
   * a Dockerfile pinning a different jj version from every other task
   * a Dockerfile that does not bake in the pinned verifier dependencies
+  * a Dockerfile whose /home/user agent-conventions block is missing, doubled,
+    or no longer byte-identical to the copy the other 23 tasks carry
   * a tests/test.sh, tests/anchor.py or tests/conftest.py that has drifted out
     of sync with the identical copy each of the other 23 tasks carries
   * a tests/conftest.py that no longer applies the bootstrap integrity anchor
@@ -68,6 +70,9 @@ REQUIRED_FILES = (
 # it means one task is being verified by different code from all the others.
 SHARED_TEST_FILES = ("tests/test.sh", "tests/anchor.py", "tests/conftest.py")
 
+# Named once so the checks and the inventory print the same path.
+DOCKERFILE_REL = "environment/Dockerfile"
+
 # tests/anchor_exemptions.json is OPTIONAL and per-task, so it is not in
 # REQUIRED_FILES and not in SHARED_TEST_FILES. Absent means "nothing this task
 # asks for removes a bootstrap commit", which is true of most tasks, and keeping
@@ -119,6 +124,24 @@ JJ_VERSION_RE = re.compile(r"jj-v(\d+\.\d+\.\d+)")
 # this check is what stops one of them being bumped or dropped on its own and
 # only surfacing as a task that mysteriously errors mid-sweep.
 VERIFIER_DEPS = ("pytest==8.4.1", "pytest-json-ctrf==0.3.5")
+
+# The note at /home/user/AGENTS.md (delivered under the name CLAUDE.md) is what
+# tells the agent the project uses jj. There is no shared base image, so the
+# comment and the RUN that writes it are duplicated by hand into all 24
+# Dockerfiles, and a half-applied edit is invisible in CI: every task still
+# builds and every verifier still passes, but the sweep is then a mix of
+# informed and uninformed tasks whose scores mean nothing next to each other.
+# So the region is extracted from each Dockerfile and the copies are compared
+# with each other, rather than against a full copy of the block pinned here,
+# which would make an intentional rewording of the body a 25-file edit and
+# this lint the 25th. The two marker lines are the exception: both are pinned
+# below, so rewording either of them is a 25-file edit by design.
+# The markers and the block are handled as BYTES, not text: the claim being
+# checked is that the 24 copies are byte-identical, and a text-mode read plus
+# splitlines() would normalise CRLF away and pass a tree that is not.
+CONVENTIONS_START = b"# Project conventions for coding agents."
+CONVENTIONS_END = b"ln -s AGENTS.md /home/user/CLAUDE.md"
+CONVENTIONS_LABEL = "/home/user agent-conventions block"
 
 # tests/vacuity_floor.json names the tests in tests/test_final_state.py that
 # pass on the untouched bootstrap image, with no agent having run. tests/test.sh
@@ -254,12 +277,20 @@ def check_task_json(task: str, task_dir: Path, instruction: str, findings: Findi
         )
 
 
-def check_dockerfile(task: str, task_dir: Path, findings: Findings) -> str | None:
-    """Returns the jj version this task pins, or None if it could not be read."""
-    path = task_dir / "environment/Dockerfile"
+def check_dockerfile(
+    task: str, task_dir: Path, findings: Findings
+) -> tuple[str | None, bytes | None]:
+    """Returns (the jj version this task pins, the Dockerfile's raw bytes).
+
+    The bytes come back so the caller can hand them to check_conventions_block
+    rather than reading the same file twice; either element is None when it
+    could not be determined.
+    """
+    path = task_dir / DOCKERFILE_REL
     if not path.is_file():
-        return None
-    text = path.read_text(encoding="utf-8")
+        return None, None
+    data = path.read_bytes()
+    text = data.decode("utf-8")
 
     if not re.search(r"^\s*FROM\s+\S+", text, re.MULTILINE | re.IGNORECASE):
         findings.fail(task, "environment/Dockerfile has no FROM instruction")
@@ -275,14 +306,106 @@ def check_dockerfile(task: str, task_dir: Path, findings: Findings) -> str | Non
     versions = set(JJ_VERSION_RE.findall(text))
     if not versions:
         findings.fail(task, "environment/Dockerfile does not pin a jj-v<X.Y.Z> release")
-        return None
+        return None, data
     if len(versions) > 1:
         findings.fail(
             task,
             f"environment/Dockerfile pins multiple jj versions: {sorted(versions)}",
         )
+        return None, data
+    return versions.pop(), data
+
+
+def extract_conventions_block(data: bytes) -> tuple[int, int, bytes | None]:
+    """Marker counts in one Dockerfile, and the region between them.
+
+    Returns (start markers found, end markers found, block). The two markers are
+    counted INDEPENDENTLY rather than paired off, because the ways this block
+    goes wrong are asymmetric: a doubled RUN with one comment above it makes
+    `docker build` fail with `ln: failed to create symbolic link: File exists`,
+    and a doubled comment with one RUN below it silently changes what the other
+    23 tasks are being compared against. A scan that closed each block at the
+    first end marker and then ignored the rest would let both through.
+
+    The block is returned only when there is exactly one of each marker and the
+    end follows the start; it runs from the CONVENTIONS_START comment line
+    through the line holding CONVENTIONS_END, inclusive, as raw bytes.
+    """
+    lines = data.split(b"\n")
+    starts = [i for i, line in enumerate(lines) if line.startswith(CONVENTIONS_START)]
+    ends = [i for i, line in enumerate(lines) if CONVENTIONS_END in line]
+    if len(starts) != 1 or len(ends) != 1 or ends[0] < starts[0]:
+        return len(starts), len(ends), None
+    return 1, 1, b"\n".join(lines[starts[0] : ends[0] + 1])
+
+
+def conventions_rationale(starts: int, ends: int) -> str:
+    """Why the count that was found is a problem -- which depends on the count."""
+    if starts == 0 and ends == 0:
+        return (
+            "with none, this task's agent is never told the project uses jj "
+            "while the other 23 are, and the two halves of the sweep are not "
+            "comparable"
+        )
+    if starts > 1 or ends > 1:
+        return (
+            "a second copy is not harmless: two `ln -s` lines make `docker "
+            "build` fail with `ln: failed to create symbolic link: File "
+            "exists`, and a second comment line changes the block the other "
+            "tasks are compared against"
+        )
+    return (
+        "the comment and the `ln -s` that writes the note travel together; one "
+        "without the other is a half-applied edit"
+    )
+
+
+def check_conventions_block(task: str, data: bytes, findings: Findings) -> str | None:
+    """Returns the sha256 of this task's conventions block, or None if unusable."""
+    starts, ends, block = extract_conventions_block(data)
+    if starts != 1 or ends != 1:
+        findings.fail(
+            task,
+            f"{DOCKERFILE_REL} has {starts} line(s) matching "
+            f"{CONVENTIONS_START.decode()!r} and {ends} matching "
+            f"{CONVENTIONS_END.decode()!r}, expected exactly 1 of each, one "
+            f"{CONVENTIONS_LABEL} -- "
+            + conventions_rationale(starts, ends),
+        )
         return None
-    return versions.pop()
+    if block is None:
+        findings.fail(
+            task,
+            f"{DOCKERFILE_REL} has {CONVENTIONS_END.decode()!r} before "
+            f"{CONVENTIONS_START.decode()!r}, so the {CONVENTIONS_LABEL} does "
+            "not read as one region",
+        )
+        return None
+    return hashlib.sha256(block).hexdigest()
+
+
+def check_conventions_identical(digests: dict[str, str], findings: Findings) -> bool:
+    """The block is hand-duplicated 24 times; a minority copy is the failure.
+
+    Returns True when every copy agrees (or there are none to compare).
+    """
+    if not digests:
+        return True
+    counts = Counter(digests.values())
+    if len(counts) == 1:
+        return True
+    consensus, _ = counts.most_common(1)[0]
+    for task, digest in sorted(digests.items()):
+        if digest != consensus:
+            findings.fail(
+                task,
+                f"{DOCKERFILE_REL}'s {CONVENTIONS_LABEL} differs from the "
+                f"one {counts[consensus]} other task(s) carry (sha256 "
+                f"{digest[:12]} vs {consensus[:12]}) -- the note is copied by "
+                "hand into every image, so a partial edit leaves the suite "
+                "silently split into informed and uninformed tasks",
+            )
+    return False
 
 
 def check_jj_versions_agree(pinned: dict[str, str], findings: Findings) -> str | None:
@@ -578,6 +701,7 @@ def print_inventory(
     network_modes: dict[str, Counter],
     jj_version: str | None,
     shared_uniform: dict[str, bool],
+    conventions_uniform: bool,
     floors: dict[str, dict],
     exemptions: dict[str, dict],
 ) -> None:
@@ -652,6 +776,10 @@ def print_inventory(
     for rel in SHARED_TEST_FILES:
         state = "identical across all tasks" if shared_uniform.get(rel, True) else "DRIFTED"
         print(f"  {rel:<26} {state}")
+    print("agent conventions block:")
+    rel = DOCKERFILE_REL
+    state = "identical across all tasks" if conventions_uniform else "DRIFTED"
+    print(f"  {rel:<26} {state}")
 
 
 def main() -> int:
@@ -667,6 +795,7 @@ def main() -> int:
     findings = Findings()
     pinned_jj: dict[str, str] = {}
     shared_digests: dict[str, dict[str, str]] = {rel: {} for rel in SHARED_TEST_FILES}
+    conventions_digests: dict[str, str] = {}
     instruction_sections: dict[str, str] = {}
     network_modes: dict[str, Counter] = {p: Counter() for p in NETWORK_MODE_PHASES}
     floors: dict[str, dict] = {}
@@ -691,9 +820,13 @@ def main() -> int:
         else:
             instruction_sections[task] = "(neither)"
 
-        version = check_dockerfile(task, task_dir, findings)
+        version, dockerfile = check_dockerfile(task, task_dir, findings)
         if version:
             pinned_jj[task] = version
+        if dockerfile is not None:  # absence already reported by check_required_files
+            digest = check_conventions_block(task, dockerfile, findings)
+            if digest:
+                conventions_digests[task] = digest
 
         record = check_vacuity_floor(task, task_dir, findings)
         if record is not None:
@@ -714,6 +847,7 @@ def main() -> int:
         rel: check_shared_file_identical(rel, shared_digests[rel], findings)
         for rel in SHARED_TEST_FILES
     }
+    conventions_uniform = check_conventions_identical(conventions_digests, findings)
 
     print(f"Linted {len(task_dirs)} task(s) under {TASKS_DIR.relative_to(REPO_ROOT)}/")
     print_inventory(
@@ -721,6 +855,7 @@ def main() -> int:
         network_modes,
         consensus_jj,
         shared_uniform=shared_uniform,
+        conventions_uniform=conventions_uniform,
         floors=floors,
         exemptions=exemptions,
     )

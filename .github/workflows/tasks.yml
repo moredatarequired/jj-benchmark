@@ -24,24 +24,59 @@ on:
       - 'scripts/lint_tasks.py'
       - 'scripts/vacuity_floor.py'
       - '.github/workflows/tasks.yml'
+  # A pull request is checked as its head merged into main as of the PR's last
+  # triggering event, so those checks go stale as main advances: once it has,
+  # the tree that lands may be one no run has executed against. This is the
+  # gate for that tree.
+  #
+  # Deliberately not path-filtered, unlike the pull_request gate above. There
+  # the filter buys a contributor faster feedback on a docs-only change; nobody
+  # is waiting on a merged commit, and a sweep is cheap. Filtering here would
+  # instead add a third hand-maintained statement of which paths matter (the
+  # others being the pull_request list above and the grep -qE escalation in
+  # prepare), and would silently stop checking main the first time something
+  # else is wired into CI -- scripts/bootstrap_anchor.py, check_run_results.py
+  # and sync_task_json.py are all unmatched by that list today.
+  push:
+    branches:
+      - main
   workflow_dispatch:
   schedule:
-    # Nightly at 07:00 UTC. PRs only exercise changed tasks, so this is what
-    # catches breakage that comes from outside the repo (a moved jj release
-    # tarball, a shifted ubuntu:24.04 base image, an apt package that vanished).
+    # Nightly at 07:00 UTC. The push gate above checks each tree as it lands,
+    # so this is what re-checks the tree already on main: breakage that comes
+    # from outside the repo (a moved jj release tarball, a shifted ubuntu:24.04
+    # base image, an apt package that vanished) arrives with no commit to
+    # trigger on, on days something landed as much as on days nothing did.
     - cron: '0 7 * * *'
 
 permissions:
   contents: read
 
 concurrency:
-  group: tasks-${{ github.ref }}
+  # Pull request runs share a group per PR ref (github.ref is refs/pull/N/merge),
+  # so a new push to a PR supersedes its own earlier checks. Everything else --
+  # push, schedule, and workflow_dispatch on whatever ref it was dispatched from
+  # -- gets a group of one, keyed on the run id, so it can be neither cancelled
+  # nor evicted. That matters because a shared group on main loses runs two ways:
+  # cancelling lets a merge kill the nightly sweep, and merely not cancelling is
+  # not enough, because by default only one run per group can be pending and a
+  # third event evicts it, so a burst of merges leaves the middle ones with no
+  # verdict at all. The accepted cost is that sweeps on main no longer serialise.
+  # They share no state -- no cache, no artifact, no registry, and task-img is
+  # local to an ephemeral runner -- but several at once can exceed the account's
+  # concurrent-job cap, so pull request checks queue behind a merge burst. Five
+  # PRs landed within two seconds on 2026-08-11.
+  group: tasks-${{ startsWith(github.ref, 'refs/pull/') && github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   lint:
     name: schema lint
     runs-on: ubuntu-latest
+    # Nothing clears a hung job: runs on main do not cancel each other, per the
+    # concurrency group above, and the default cap is six hours. Every job here
+    # is capped well above its observed worst case instead.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       # ubuntu-latest ships Python 3.12, so tomllib is in the stdlib.
@@ -51,6 +86,7 @@ jobs:
   prepare:
     name: select tasks
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       tasks: ${{ steps.select.outputs.tasks }}
       count: ${{ steps.select.outputs.count }}
@@ -93,7 +129,7 @@ jobs:
                 | sort -u)
             fi
           else
-            # schedule / workflow_dispatch: the full sweep.
+            # push / schedule / workflow_dispatch: the full sweep.
             selected=$(all_tasks)
           fi
 
@@ -120,6 +156,11 @@ jobs:
     # Skip cleanly when a PR touched nothing under tasks/.
     if: needs.prepare.outputs.count != '0'
     runs-on: ubuntu-latest
+    # Higher than the other two jobs: this one builds the task image cold,
+    # fetching from three networks. The slowest task job on record is 68
+    # seconds, and timeout-minutes counts execution, not time spent held back
+    # by max-parallel.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       # One report per broken task beats one report and a pile of cancellations.

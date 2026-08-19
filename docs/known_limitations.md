@@ -196,9 +196,9 @@ green CI. Nothing above is closed by that check.
 None of the first three above is reachable from CI today; section 4 states its own exposure
 inline. The bounding fact on the floor holes is that CI only ever runs
 `vacuity_floor.py --check`, never `--write`:
-`.github/workflows/tasks.yml:202` is the sole invocation in the workflow, and `--check`
+`.github/workflows/tasks.yml:243` is the sole invocation in the workflow, and `--check`
 compares against the committed floor rather than replacing it, so a corrupted measurement
-fails the build instead of being recorded. (The `--write` that appears at line 194 is text
+fails the build instead of being recorded. (The `--write` that appears at line 235 is text
 inside an error message, not a command.) Secondarily, on the floor cases CI's `reward == 0`
-assertion at line 193 fires first, and no shipped verifier uses skip or xfail. The real
+assertion at line 234 fires first, and no shipped verifier uses skip or xfail. The real
 exposure is a human running `--write` by hand, or a future task that introduces skips.

@@ -1,0 +1,127 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 5 items
+
+../../../tests/test_final_state.py .FFF.                                 [100%]
+
+=================================== FAILURES ===================================
+______________________ test_each_line_holds_one_change_id ______________________
+
+    def test_each_line_holds_one_change_id():
+        """One id per line, as asked -- no graph glyphs, no descriptions, no dupes.
+    
+        `jj op show` names the same commit three times in its output -- once under
+        Changed commits, again under Changed working copy, again under Changed
+        local bookmarks -- so a careless scrape of it produces repeats. It also
+        prints hidden predecessors in the `X/1` offset form, which is a revision
+        spelling for the commit BEFORE the rebase, not the change id of what it
+        changed.
+        """
+        _, lines = answer_lines()
+        bad = [line for line in lines if not CHANGE_ID_RE.match(line.strip())]
+>       assert not bad, (
+            f"{ANSWER_FILE} has {len(bad)} line(s) that are not a single change "
+            f"id: {bad[:5]}. Each id must be on its own line, with nothing else "
+            "on it."
+        )
+E       AssertionError: /home/user/checkout-api/touched.txt has 7 line(s) that are not a single change id: ['@  zukslqwkxktnxmymzuvtwvzvsnvnwxnw', '○  spvnywnrpwyrwkmtlwzqupovlsnmxqrl', '○  uuwmuovpquswykolpoxxpokxrkrvnnvo', '○  sprruoluxtqtsnlmsqqoqtxokvtyryst', '○  xxlupqqtlqpsosqrnqwxnkpllszzzlop']. Each id must be on its own line, with nothing else on it.
+E       assert not ['@  zukslqwkxktnxmymzuvtwvzvsnvnwxnw', '○  spvnywnrpwyrwkmtlwzqupovlsnmxqrl', '○  uuwmuovpquswykolpoxxpokxrkrvnnvo', '○  sprruoluxtqtsnlmsqqoqtxokvtyryst', '○  xxlupqqtlqpsosqrnqwxnkpllszzzlop', '│', ...]
+
+/tests/test_final_state.py:309: AssertionError
+___________ test_the_listed_ids_are_exactly_what_the_rebase_changed ____________
+
+    def test_the_listed_ids_are_exactly_what_the_rebase_changed():
+        """Set equality against the operation difference, computed here and now."""
+        op, expected = the_rebase()
+>       actual = resolved_answer()
+                 ^^^^^^^^^^^^^^^^^
+
+/tests/test_final_state.py:324: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def resolved_answer():
+        """Each line resolved to a full change id, by unambiguous prefix.
+    
+        Resolution rather than text comparison is the point: a solve that writes
+        8-character ids, one that writes the full 32, and one that pastes them in
+        by hand are the same answer and are graded the same. The candidate pool is
+        the expected set plus everything currently visible, so a line naming a real
+        commit that simply is not part of the answer is reported as an extra rather
+        than as an unresolvable token.
+        """
+        snapshot_working_copy()
+        _, expected = the_rebase()
+        pool = set(expected) | set(change_ids("all() ~ root()"))
+        _, lines = answer_lines()
+        resolved = set()
+        for line in lines:
+            token = line.strip()
+>           assert CHANGE_ID_RE.match(token), (
+                f"{token!r} in {ANSWER_FILE} is not a change id."
+            )
+E           AssertionError: '@  zukslqwkxktnxmymzuvtwvzvsnvnwxnw' in /home/user/checkout-api/touched.txt is not a change id.
+E           assert None
+E            +  where None = <built-in method match of re.Pattern object at 0x7faa2bac3100>('@  zukslqwkxktnxmymzuvtwvzvsnvnwxnw')
+E            +    where <built-in method match of re.Pattern object at 0x7faa2bac3100> = re.compile('\\A[k-z]{4,32}\\Z').match
+
+/tests/test_final_state.py:270: AssertionError
+________________ test_no_commit_made_after_the_rebase_is_listed ________________
+
+    def test_no_commit_made_after_the_rebase_is_listed():
+        """Named for the wrong solve it catches: reading the branch off `jj log`.
+    
+        The branch carries five commits and the rebase changed four, because the
+        fifth was made afterwards. `main..retry-backoff`, `main..@` and `main..`
+        all return that fifth commit, so every cheap current-graph answer includes
+        a commit that did not exist when the rebase ran. The other cheap error --
+        including main's own commit, which existed but was not moved -- is caught
+        here too.
+        """
+        op, expected = the_rebase()
+        at_rebase = set(visible_at(op))
+>       actual = resolved_answer()
+                 ^^^^^^^^^^^^^^^^^
+
+/tests/test_final_state.py:347: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def resolved_answer():
+        """Each line resolved to a full change id, by unambiguous prefix.
+    
+        Resolution rather than text comparison is the point: a solve that writes
+        8-character ids, one that writes the full 32, and one that pastes them in
+        by hand are the same answer and are graded the same. The candidate pool is
+        the expected set plus everything currently visible, so a line naming a real
+        commit that simply is not part of the answer is reported as an extra rather
+        than as an unresolvable token.
+        """
+        snapshot_working_copy()
+        _, expected = the_rebase()
+        pool = set(expected) | set(change_ids("all() ~ root()"))
+        _, lines = answer_lines()
+        resolved = set()
+        for line in lines:
+            token = line.strip()
+>           assert CHANGE_ID_RE.match(token), (
+                f"{token!r} in {ANSWER_FILE} is not a change id."
+            )
+E           AssertionError: '@  zukslqwkxktnxmymzuvtwvzvsnvnwxnw' in /home/user/checkout-api/touched.txt is not a change id.
+E           assert None
+E            +  where None = <built-in method match of re.Pattern object at 0x7faa2bac3100>('@  zukslqwkxktnxmymzuvtwvzvsnvnwxnw')
+E            +    where <built-in method match of re.Pattern object at 0x7faa2bac3100> = re.compile('\\A[k-z]{4,32}\\Z').match
+
+/tests/test_final_state.py:270: AssertionError
+==================================== PASSES ====================================
+_________________________ test_touched_txt_was_written _________________________
+---------------------------- Captured stdout setup -----------------------------
+bootstrap anchor holds
+=========================== short test summary info ============================
+PASSED ../../../tests/test_final_state.py::test_touched_txt_was_written
+PASSED ../../../tests/test_final_state.py::test_the_history_was_not_rewritten_to_shrink_the_answer
+FAILED ../../../tests/test_final_state.py::test_each_line_holds_one_change_id
+FAILED ../../../tests/test_final_state.py::test_the_listed_ids_are_exactly_what_the_rebase_changed
+FAILED ../../../tests/test_final_state.py::test_no_commit_made_after_the_rebase_is_listed
+========================= 3 failed, 2 passed in 1.11s ==========================
+reward 0.250000: 1 of 4 scored test(s) passed (test_touched_txt_was_written); 1 test(s) excluded as passing with no agent (test_the_history_was_not_rewritten_to_shrink_the_answer)

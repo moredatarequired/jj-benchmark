@@ -63,8 +63,9 @@ This replaces the `--ve UV_NATIVE_TLS=1 --ve UV_HTTP_TIMEOUT=300` flags this REA
 to require. Those configured `uv` inside the verifier container, and nothing in the
 verifier uses `uv` any more, so both are now no-ops — drop them. `--ve` sets the
 *verifier's* environment (`harbor/cli/jobs.py`), so it never affected anything else:
-uv on the machine launching `harbor` reads its own ambient environment, and the four
-task images that install `uv` for the *agent* to use are configured through `--ae`.
+uv on the machine launching `harbor` reads its own ambient environment, and the one
+task image that still installs `uv` for the *agent* to use
+(`template_customize_log_output`) is configured through `--ae`.
 
 The network is still used to *build* the images — apt, the jj release tarball, and the
 pip install above. That is a build-time cost paid once per image, not per trial, and a
@@ -122,13 +123,28 @@ python3 scripts/bootstrap_anchor.py --verify-untouched  # pre-flight, see below
 harbor run ...                                          # then the sweep
 ```
 
-Between `--write` and the sweep, **do not prune, do not `--no-cache`, and do not build
-on a different daemon.** Anything that evicts a bootstrap layer re-randomises that task's
-change ids. `--check` catches that by re-measuring and comparing; it reports a moved id
-set with an unchanged `environment_sha256` (a content hash of the build context) as a
-cold-cache rebuild, and a changed one as a real Dockerfile change to review. Docker image
-ids are deliberately *not* the staleness key — buildx mints a new one on every build even
-on a full cache hit.
+Between `--write` and the sweep, **do not prune, do not `--no-cache`, do not build on a
+different daemon, and do not `docker rmi` the task images.** Anything that evicts a
+bootstrap layer re-randomises that task's change ids. `--check` catches that by
+re-measuring and comparing; it reports a moved id set with an unchanged
+`environment_sha256` (a content hash of the build context) as a cold-cache rebuild, and a
+changed one as a real Dockerfile change to review. Docker image ids are deliberately
+*not* the staleness key — buildx mints a new one on every build even on a full cache hit.
+
+**The three commands above are safe exactly as written**, because
+`scripts/bootstrap_anchor.py` and `scripts/vacuity_floor.py` both **keep** the images
+they build. They did not always: deleting was the default and `--keep-images` the
+opt-out, so running this procedure as documented deleted every image it had just
+measured. The sweep does not run those tags — harbor builds its own per trial — so the
+damage is not a missing image but cached-layer eviction: `docker rmi` can drop bootstrap
+layers that no surviving image still references, and the next build re-randomises that
+task's change ids. That presents as a scoring collapse rather than the tooling fault it
+is, and it is unrecoverable wherever a cold `docker build` cannot succeed.
+`--keep-images` is still accepted; its only remaining effect is to make a simultaneous
+`--rmi-images` a parse error. `--rmi-images` is the opt-in for deleting, and is never
+part of the pre-sweep procedure. Measured, it reclaims very little — these images share
+their layers with the ones the sweep builds, and the BuildKit cache this procedure
+forbids pruning pins them anyway — so treat it as an escape hatch, not a disk budget.
 
 `--verify-untouched` is the pre-flight, and it is the one that catches the dangerous
 case: an anchor written before an image that was then rebuilt cold would make **every**
@@ -153,13 +169,19 @@ that loud, on the host, where it can be fixed.
 ### Commits a task is *allowed* to remove: `tests/anchor_exemptions.json`
 
 Several jj operations legitimately make a change id stop resolving, so the strict check
-above would score some **correct** solves 0. Measured on jj 0.38.0: `jj abandon` removes
-the id; `jj squash --from B --into A` removes B's (and squashing the working copy into an
-ancestor removes the working copy's, because jj abandons the emptied source and mints a
-fresh working-copy commit); `jj new` / `jj edit` / `jj prev` / `jj next` moving off an
-**empty, undescribed** working copy to anywhere that is not its descendant makes jj
-auto-abandon it; `jj workspace forget` removes that workspace's working copy; and
-`jj op restore` removes everything created after the operation restored to.
+above would score some **correct** solves 0. Measured on jj 0.38.0, and every task image
+now pins **0.44.0**. One of these has been re-observed there — jj auto-abandoning an
+empty, undescribed working copy you move off, recorded against a 0.44 image in
+`tasks/merge_bookmarks/tests/anchor_exemptions.json`. The rest have not been re-measured
+against 0.44, and what a clean `--verify-untouched` establishes for them is only that
+every exemption still resolves, not that it suppresses a real violation correctly.
+`jj abandon` removes the id; `jj squash --from B --into A` removes B's
+(and squashing the working copy into an ancestor removes the working copy's, because jj
+abandons the emptied source and mints a fresh working-copy commit); `jj new` /
+`jj edit` / `jj prev` / `jj next` moving off an **empty, undescribed** working copy to
+anywhere that is not its descendant makes jj auto-abandon it; `jj workspace forget`
+removes that workspace's working copy; and `jj op restore` removes everything created
+after the operation restored to.
 
 So `abandon_commits` is two abandons, `squash_range`'s own
 `test_fix_commits_are_no_longer_visible` **asserts** those ids are gone, and
@@ -266,15 +288,16 @@ assertions to address the graded commit by its anchored change id, for which
 `tests/anchor.py` exposes `anchored_change_id(description)` (through
 `change_id_or_fallback`, per the idiom above).
 
-Two smaller residuals, stated rather than hidden. On the 4 tasks whose handover working
-copy is exempt (`absorb_changes`, `operation_recovery`, `rebase_branch`,
-`split_commit_interactive`), that one empty undescribed commit is no longer evidence — it
-carries no content, and jj discards it silently on any `jj new`/`jj edit`, so requiring it
-would fail honest solves. And on the 2 tasks whose only bootstrap commit *is* an empty
-undescribed working copy (`workspace_add`, `template_customize_log_output`) it is
-deliberately **not** exempt, because it is the graded object — with the consequence that an
-agent who solves such a task by creating a *new* commit instead of describing the one it
-was handed now scores 0. That is a scoring-shape change, and it is intended.
+Two smaller residuals, stated rather than hidden. On the 5 tasks whose handover working
+copy is exempt (`absorb_changes`, `merge_bookmarks`, `operation_recovery`,
+`rebase_branch`, `split_commit_interactive`), that one empty undescribed commit is no
+longer evidence — it carries no content, and jj discards it silently on any
+`jj new`/`jj edit`, so requiring it would fail honest solves. And on the 2 tasks whose
+only bootstrap commit *is* an empty undescribed working copy (`workspace_add`,
+`template_customize_log_output`) it is deliberately **not** exempt, because it is the
+graded object — with the consequence that an agent who solves such a task by creating a
+*new* commit instead of describing the one it was handed now scores 0. That is a
+scoring-shape change, and it is intended.
 
 ### Evaluation Details
 

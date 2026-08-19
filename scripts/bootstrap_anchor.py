@@ -149,8 +149,9 @@ tests/anchor.py abstain, and an abstain is reported as a problem.
 For a task whose bootstrap ships an empty directory it asserts the opposite
 anchor verdict -- an explicit `anchored=false` abstain -- so "this task has no
 repository" stays distinguishable from "the anchor was never generated". All
-three such tasks were cut when the suite was reduced to 14, so no current task
-takes that branch; it stays for the next task authored against a bare directory.
+three such tasks were cut when the suite was reduced to 14 (it has since grown
+back to 24), so no current task takes that branch; it stays for the next task
+authored against a bare directory.
 
 CLI, deliberately shaped like scripts/vacuity_floor.py
 ======================================================

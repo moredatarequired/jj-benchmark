@@ -55,8 +55,9 @@ The tasks are easy for two specific reasons, both fixable:
 
 - 41 of the 53 `instruction.md` files had an `## Implementation` section listing the
   commands to run. A jj skill cannot help with a prompt that already contains the
-  answer. Those sections are now deleted (see "What's done"), but 21 tasks still name
-  their answer command in Background or Requirements.
+  answer. Those sections were deleted, and the instructions have since been rewritten
+  down to one end-state sentence apiece naming no jj command (see "What's done" #7), so
+  the "21 tasks still name their answer command" count is history too.
 - All 53 tasks set `allow_internet = true`, so the agent can read the jj docs — which
   is the thing the skill is supposed to supply. The benchmark competes with what we're
   trying to measure.
@@ -74,56 +75,63 @@ was 87–98%, about six tasks of resolution across the whole leaderboard.
 | #4 | `rebase_branch` template separator. 0/8 across every model → 3/3 at k=3 |
 | #5 | Deleted the `## Implementation` section from all 41 tasks that had one. Task data the tests assert on was migrated into Requirements first |
 | #6 | **Cut the suite from 53 tasks to 14** (`docs/suite_redesign_proposal.md`). 39 deleted: duplicates of a survivor, tasks grading HOW rather than WHAT, two that were passable without running jj at all, and the 7 that were structurally sound but 5/5 on all three models — a saturated task contributes nothing to a paired comparison and still costs an image build and a verifier run per sweep. New tasks are authored on top of the 14, not alongside the old set |
-| in flight | Shared base image so harbor stops reinstalling Claude Code per trial |
+| #7 | **Roadmap item 2, all three levers.** The agent's network is `network_mode = "allowlist"` with `gateway-us.pydantic.dev` as the only host, on all 24 tasks — no jj docs (#10), with (#12) replacing the deprecated `allow_internet` key. Every `instruction.md` is one end-state sentence naming no jj command (#15) and (#16). Reward is floor-corrected partial credit off the CTRF per-test report, not a collapsed 1 or 0 (#20) |
+| open | Shared base image so harbor stops reinstalling Claude Code per trial. Still unbuilt: all 24 task images are `FROM ubuntu:24.04` and none carries Claude Code |
 
-Baseline job results for all three models are in `/tmp/jjjobs/` and not committed yet —
-dropping them into `jobs/` makes them show up on the site, which is worth doing once we
-decide whether we want our numbers sitting in the same table as the Pochi runs.
+Sweep write-ups live in `results/`; the per-trial records do not. `jobs/` is gitignored
+since (#7), so trial directories go whole to an orphan `archive/…` branch cited by commit
+— `973a3827c1` for the 24-task baseline, `b7746772c4` for the A/B. Whether our numbers
+should also sit on the site beside the Pochi runs is still undecided.
 
 ## Roadmap
 
-**1. Make iteration fast.** A full sweep is 26 minutes at concurrency 3, which is too
-slow to tune skill variants against. Two causes, both silly:
+**1. Make iteration fast.** Still open, and the measured constraint has moved: the
+2026-08-14 sweep managed 326 trials in 59 minutes at `-n 8` and died on **disk**, not on
+concurrency — usable disk was about 40 GB, harbor rebuilds the task image per trial
+(`pull_policy: build`, `delete: true`), and BuildKit cache runs about 40 MB per trial, so
+a 480-trial sweep needs roughly 19 GB of headroom at launch. Two more causes, both silly:
 
 - `agent_setup` is 45% of all trial-seconds — harbor installing Claude Code into every
   container, downloading the same binary every time. Baking it into a shared base
   image removes the phase; the adapter skips its install when `claude` is on PATH.
   (The cut to 14 tasks shrinks the sweep in the same direction, but it does not fix
   this: the phase is per *trial*, so it comes straight back as `-k` goes up.)
-- Docker Desktop is capped at 7.75 GiB on a 64 GiB machine, which is the only reason
-  concurrency is 3. Raise it, drop `--override-memory-mb` to 512 (`task.toml` asks for
-  8192, which is fantasy), and we're CPU-bound at 16 instead.
+- Docker Desktop is capped at 7.75 GiB on a 64 GiB machine, the reason given for
+  concurrency 3. Raise it, drop `--override-memory-mb` to 512 (`task.toml` asks for 8192,
+  which is fantasy), and we're CPU-bound at 16 instead. Untested since: the one sweep on
+  record ran at `-n 8` in an agent container elsewhere, and died on disk, not memory.
 
 Target is 2–4 minutes per sweep. Separately, every one of the 24 Dockerfiles hardcodes
 the x86_64 jj tarball, so everything runs under Rosetta on Apple Silicon; jj ships an
 aarch64 build.
 
-**2. Create headroom.** In order of leverage: set `allow_internet = false`; strip the
-remaining command names out of the instructions that still give the answer away in
-Background or Requirements (that was 21 of the old 53; it needs re-counting over the 24,
-and `squash_range` and `template_customize_log_output` are both known to be among them
-— `docs/suite_redesign_proposal.md` §1 R1 quotes the offending sentences); award partial
-credit from the CTRF per-test results instead of collapsing pytest to 1 or 0.
+**2. Create headroom — done.** All three levers landed; see "What's done" #7.
 
-**3. Re-baseline** all three models. If a frontier model still scores near 24/24, the
-tasks are too easy to measure skills with regardless of scoring, and the answer is new
-tasks rather than more knobs. `plan.md` §4 lists jj friction points — pushing an
-anonymous commit with no bookmark, committing conflict markers, undo after a push —
-and none are implemented. Those are the cases where the Git-shaped answer is wrong,
-which is exactly where a skill should earn its keep.
+**3. Re-baseline** all three models. Half done: `results/2026-08-14-baseline-24.md` covers
+haiku and sonnet on the 24 tasks, informed arm, with **no opus arm** and 326 of a designed
+552 trials, so n is 5–7 per cell. It answers what the item was for — sonnet is 1.000 on 20
+of 24 (mean 0.9173), haiku has 19 tasks off ceiling (0.6002), so **measure on haiku**; a
+sonnet A/B would rest on three tasks, one of them with a known-broken grader.
 
-**4. Build the A/B harness.** Harbor already has skill injection: `--skill` takes a
-local path or a git source and mounts `SKILL.md` directories into the agent
-environment, so variants are just different `--skill` values on otherwise identical
-jobs. Run three arms — no skill, the real skill, and a deliberately generic or wrong
-one. If the decoy scores the same as the real skill, the task set isn't sensitive to
-skill content and no amount of variant tuning will show anything. Run that check
-before building variants. Use `-k 5` at minimum; with `k=1` a two-task difference is
-indistinguishable from noise.
+All three of `plan.md` §4's friction points are now touched, not none: pushing without a
+bookmark is `bookmark_left_behind`, and `..` versus `::` is `unmerged_tips`, which grades
+`heads(main..)` against `heads(all())` and `::main` (`rebase_touched_commits` also grades
+revset output). Conflict markers are covered in substance by `propagated_conflict`, though
+§4's own case — accidentally *committing* markers — is graded nowhere.
 
-**5. Score efficiency, not just pass/fail.** A good skill should show up as fewer
-turns and fewer wrong commands even where everyone passes. Harbor records per-trial
-tokens and phase latencies already, and job config has a `metrics` hook.
+**4. Build the A/B harness — built, and run.** `results/2026-08-16-skill-ab.md` is six
+arms on the 24-task suite at haiku, 576 trials, at `k=4` rather than the `k=5` asked for
+here; read the numbers there. On this item's own stopping condition — a decoy scoring like
+the real skill would mean the tasks aren't sensitive to skill content — the answer split:
+the published third-party skill did not separate from control (C − A +0.013, p = 0.745) and
+beat the decoy by only +0.060, while our hand-written document did (F − B +0.146,
+p = 0.0095).
+
+**5. Score efficiency, not just pass/fail.** Partly answered, as analysis rather than an
+endpoint: the A/B reports turns and Bash calls per arm, cost tracks turns almost exactly
+(log-log slope 0.94 over 576 trials), and the best-scoring arm was also the cheapest —
+23.1 turns against the control's 38.6. Harbor records per-trial tokens and phase
+latencies already, and job config has a `metrics` hook; nothing here configures one yet.
 
 ## Things worth knowing
 
@@ -131,6 +139,11 @@ tokens and phase latencies already, and job config has a `metrics` hook.
 compresses hard: Opus used 5.6M input / 59k output, Sonnet 9.8M / 54k, Haiku 13.0M /
 118k. Actual costs were $6.09 / $4.68 / $2.25, not the 5× and 15× ratios the pricing
 implies. Budget from those numbers.
+
+**And harbor's sonnet figure is wrong by exactly 1.5×.** Sonnet 5 is on introductory
+pricing ($2/$10 per MTok) against harbor's list ($3/$15), so take two-thirds of any
+harbor-reported sonnet cost — haiku and opus need none, so do not rescale twice. For
+sizing: $39.53 harbor / $31.24 corrected bought 326 baseline trials, $46.94 the A/B.
 
 **Don't run two agents in one checkout.** We did, and it cost real cleanup — one
 session stalled for two hours because another had rewritten a file under it. Give each
@@ -151,6 +164,14 @@ uvx --from harbor==0.20.0 harbor run \
   --agent claude-code --model claude-opus-5 --env docker \
   --path ./tasks --override-memory-mb 2048 --n-concurrent 3 -y
 ```
+
+One thing that line leaves out: **haiku needs its dated id**, `claude-haiku-4-5-20251001`
+and not a bare `claude-haiku-4-5` — and haiku is the model everything is measured on.
+
+**Don't `docker system prune -a` to free space in an agent container.** A cold `docker
+build` cannot succeed there at all — the pip layer dies with `CERTIFICATE_VERIFY_FAILED`
+against the proxy's re-terminated chain (`results/2026-08-14-baseline-24.md`) — so
+pruning the cache destroys the ability to build rather than recovering room to run.
 
 Then, before you believe any of the numbers:
 
@@ -176,8 +197,8 @@ insist on are therefore obsolete. `--ve` sets the *verifier's* environment
 (`harbor/cli/jobs.py` merges it into `config.verifier.env`), and nothing in the
 verifier uses `uv` any more. They are not harmful, just inert — drop them. Note this
 is a separate concern from `uv` on the machine launching `harbor`, which reads its own
-ambient environment, and from the four task images that install `uv` for the *agent*,
-which is configured through `--ae`.
+ambient environment, and from the one remaining task image that installs `uv` for the
+*agent* (`template_customize_log_output`), which is configured through `--ae`.
 
 The network is still needed to *build* the images: apt, the jj release tarball, and
 that pip install. That is per-image and cached, not per-trial, and a build failure is
@@ -193,9 +214,9 @@ still a run whose number is wrong.
 
 **The site is built from the repo.** `site/scripts/compute-tasks.ts` walks
 `jobs/*/*/result.json` at build time and reads prompts from `tasks/*/instruction.md`.
-Drop a job directory into `jobs/` and it shows up. The leaderboard keys rows on
-model + agent, and every upstream row is the Pochi scaffold, so our claude-code
-numbers aren't apples-to-apples with theirs.
+Drop a job directory into `jobs/` and it shows up — but `jobs/` is gitignored, so it shows
+up only for you. The leaderboard keys rows on model + agent, and every upstream row is the
+Pochi scaffold, so our claude-code numbers aren't apples-to-apples with theirs.
 
 **Our task set and upstream's no longer overlap enough to compare.** Upstream's runs
 show 52 tasks; ours showed 53 (`revset_querying_bob` was added after their last job) and

@@ -370,10 +370,13 @@ the run-scratchpad output of record **line for line, with one line differing** �
 the echoed job-directory path.
 
 **It re-derives arms A–F in the same pass, and they are unchanged by arm G's
-presence:** 436 A–F cells were machine-compared against the pre-arm-G validation
-run with 0 mismatches, covering the per-arm means, the arm intervals and DEFF,
-all 11 published contrasts, the permutation legs, the channel/content share
-block (byte-identical), the per-task table and the anchor and cost figures. The
+presence:** its entire A–F output — 65 table rows across the six numbered
+sections — was machine-compared against the pre-arm-G validation run with 0
+mismatches: the 6 per-arm mean rows, the 6 arm-interval/DEFF rows, all 11
+published contrasts on both the *t* and the permutation legs (11 rows each,
+including the exact 2^24 *p*), the per-task table's 24 task rows plus its
+arm-mean row, and the 6 per-arm anchor-and-cost rows; the channel/content share
+block compares identical line for line. The
 one section that moves is Holm, by design: with G loaded the primary family
 becomes G's three contrasts. That family choice is load-bearing — folding G's
 three contrasts into the published seven (a family of ten) moves E − D from
@@ -573,7 +576,7 @@ session that runs it, and says nothing about the 8 it skipped.
   any.
 - **The evidence behind several numbers in the write-up.** The leak-scan corpus
   and scripts (748 items, 115 hits, the 128-hit re-scan), the fact-check report
-  (7 fixes, 94 claims), the pre-arm-G validation run the 436 A-F cells were
+  (7 fixes, 94 claims), the pre-arm-G validation run the A-F output was
   compared against, the anchor pre-flight (`--write`/`--check`/
   `--verify-untouched`, 24/24 clean), the authoring brief and the author's
   transcript, and the run scratchpad this README's step 5 reproduces line for

@@ -83,10 +83,10 @@ Consequences, and they are not optional:
     is an infrastructure condition, and turning it into a task failure would
     zero every trial the moment a cache got evicted.
 
-`JJ_RANDOMNESS_SEED` is not an escape from this. Measured on jj 0.38.0: with
-the seed set, every commit created by a separate `jj` invocation gets the
-*same* change id (the seed is per-process, not a stream), which is worse than
-random.
+`JJ_RANDOMNESS_SEED` is not an escape from this. Measured on jj 0.38.0 -- every
+task image now pins 0.44.0 and this has not been re-measured since -- with the
+seed set, every commit created by a separate `jj` invocation gets the *same*
+change id (the seed is per-process, not a stream), which is worse than random.
 
 Because the anchor describes a build and not a Dockerfile, the file it writes is
 **gitignored** (`tasks/*/tests/bootstrap_anchor.json`) and is deliberately NOT
@@ -115,6 +115,20 @@ invalidates its anchor. Deleting the anchor file is always safe -- the verifier
 abstains -- while a STALE anchor is the dangerous state, which is exactly what
 `--check` and `--verify-untouched` are for.
 
+That last prohibition once applied to THIS SCRIPT, and that is why the steps
+above carry no flag. Deleting used to be the default and `--keep-images` the
+opt-out, so following the procedure literally made steps 1-3 `docker rmi` every
+image they had just measured. Step 4 does not run these tags -- harbor builds
+its own per trial -- so the damage is not a missing image but cached-layer
+eviction: `docker rmi` can drop bootstrap layers that no surviving image still
+references, and the next build re-randomises that task's change ids. That reads
+as a scoring bug rather than the tooling bug it is. **Keeping the images is now
+the default**, so the three steps above are safe exactly as written.
+`--keep-images` is still accepted; it now only makes `--rmi-images` a parse
+error. Deleting is opt-in via `--rmi-images`, which must never be used between
+step 1 and step 4, and which reclaims far less than it looks like it should --
+see its `--help`.
+
 `--verify-untouched` is the strongest of the three because it is an end-to-end
 rehearsal rather than a comparison: for each task it builds the image, mounts the
 real `tasks/<task>/tests` directory read-only at /tests exactly as harbor and CI
@@ -132,9 +146,11 @@ Because the anchor HOLDS on the untouched image is asserted rather than merely
 `tests/anchor_exemptions.json`: an exemption entry that no longer resolves makes
 tests/anchor.py abstain, and an abstain is reported as a problem.
 
-For the three tasks whose bootstrap ships an empty directory it asserts the
-opposite anchor verdict -- an explicit `anchored=false` abstain -- so "this task
-has no repository" stays distinguishable from "the anchor was never generated".
+For a task whose bootstrap ships an empty directory it asserts the opposite
+anchor verdict -- an explicit `anchored=false` abstain -- so "this task has no
+repository" stays distinguishable from "the anchor was never generated". All
+three such tasks were cut when the suite was reduced to 14, so no current task
+takes that branch; it stays for the next task authored against a bare directory.
 
 CLI, deliberately shaped like scripts/vacuity_floor.py
 ======================================================
@@ -143,7 +159,8 @@ CLI, deliberately shaped like scripts/vacuity_floor.py
     scripts/bootstrap_anchor.py --write --task rebase_branch
     scripts/bootstrap_anchor.py --check --jobs 4
     scripts/bootstrap_anchor.py --verify-untouched --jobs 4
-    scripts/bootstrap_anchor.py --write --task squash_range --keep-images
+    scripts/bootstrap_anchor.py --write --rmi-images       # delete as it goes;
+                                                           # NEVER before a sweep
 
 Pure stdlib. Requires a working docker daemon.
 """
@@ -589,7 +606,7 @@ def build_image(task: str) -> tuple[str, Path]:
     return image, env_dir
 
 
-def measure(task: str, keep_image: bool, quiet: bool) -> dict:
+def measure(task: str, rmi_image: bool, quiet: bool) -> dict:
     """Build the task image and read the anchor out of the untouched bootstrap."""
     image, env_dir = build_image(task)
 
@@ -632,7 +649,7 @@ def measure(task: str, keep_image: bool, quiet: bool) -> dict:
             ) from exc
     finally:
         shutil.rmtree(work, ignore_errors=True)
-        if not keep_image:
+        if rmi_image:
             subprocess.run(["docker", "rmi", "-f", image],
                            capture_output=True, text=True)
 
@@ -907,7 +924,7 @@ def audit(task: str, fresh: dict) -> list[str]:
     return check_exemptions(task, fresh)
 
 
-def verify_untouched(task: str, keep_image: bool, quiet: bool) -> list[str]:
+def verify_untouched(task: str, rmi_image: bool, quiet: bool) -> list[str]:
     """Pre-flight: run the REAL tests/test.sh against the untouched image.
 
     This is the check that closes the operational hole `--check` cannot: `--check`
@@ -972,7 +989,7 @@ def verify_untouched(task: str, keep_image: bool, quiet: bool) -> list[str]:
             if (verifier / "verifier_error.txt").is_file() else ""
     finally:
         shutil.rmtree(logs, ignore_errors=True)
-        if not keep_image:
+        if rmi_image:
             subprocess.run(["docker", "rmi", "-f", image],
                            capture_output=True, text=True)
 
@@ -1076,7 +1093,8 @@ def run_preflight(tasks: list[str], args: argparse.Namespace) -> int:
 
     def one(task: str) -> None:
         try:
-            found = verify_untouched(task, args.keep_images, args.quiet)
+            found = verify_untouched(task, rmi_image=args.rmi_images,
+                                     quiet=args.quiet)
         except MeasureError as exc:
             found = [str(exc)]
         if found:
@@ -1136,9 +1154,30 @@ def main() -> int:
         "--jobs", type=int, default=4, metavar="N",
         help="parallel measurements (default 4; image builds are CPU-bound)",
     )
-    parser.add_argument(
+    # Keeping the images is the DEFAULT, and deliberately so. The documented
+    # pre-sweep procedure carries no flag, so while deleting was the default,
+    # following the documentation literally destroyed the images the sweep was
+    # about to run against. Nothing automated calls this script -- CI never
+    # invokes it -- so the only cost of the safe default is disk on a
+    # full-suite pass, which is exactly what --rmi-images is for.
+    images = parser.add_mutually_exclusive_group()
+    images.add_argument(
+        "--rmi-images", action="store_true",
+        help="docker rmi each image once it has been measured. MUST NOT be "
+             "used as part of the pre-sweep procedure: the sweep builds its "
+             "own tag per trial and never runs these, but deleting them can "
+             "still evict cached bootstrap layers that no surviving image "
+             "references, and the rebuild re-randomises every change id just "
+             "recorded. Measured, it reclaims very little -- these images "
+             "share their layers with the ones the sweep builds, and the "
+             "BuildKit cache the procedure forbids pruning pins them anyway "
+             "-- so this is an escape hatch, not a disk budget.",
+    )
+    images.add_argument(
         "--keep-images", action="store_true",
-        help="do not docker rmi the images this script builds",
+        help="accepted for compatibility; keeping the images is now the "
+             "default, so its only remaining effect is to make a "
+             "simultaneous --rmi-images a parse error.",
     )
     parser.add_argument("--quiet", action="store_true", help="only print problems")
     args = parser.parse_args()
@@ -1161,7 +1200,8 @@ def main() -> int:
 
     def one(task: str) -> None:
         try:
-            measurements[task] = measure(task, args.keep_images, args.quiet)
+            measurements[task] = measure(task, rmi_image=args.rmi_images,
+                                         quiet=args.quiet)
         except MeasureError as exc:
             failures[task] = [str(exc)]
 

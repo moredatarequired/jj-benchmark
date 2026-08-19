@@ -96,6 +96,16 @@ Examples:
     scripts/vacuity_floor.py --check --jobs 4             # what nightly CI runs
     scripts/vacuity_floor.py --check --task squash_range \
         --ctrf "$logs/verifier/ctrf.json"                 # what per-task CI runs
+    scripts/vacuity_floor.py --write --rmi-images          # delete as it goes
+
+Keeping the images this builds is the DEFAULT, matching
+scripts/bootstrap_anchor.py. `--rmi-images` is the opt-in for deleting them and
+`--keep-images` is still accepted, its only remaining effect being to make a
+simultaneous `--rmi-images` a parse error. The two CLIs are shaped
+alike on purpose, and a flag that meant opposite things in the two would be its
+own footgun; on top of that this builds from the SAME build context as the
+anchor script (under its own `vacuity-floor-<task>` tag), so deleting here can
+evict the cached bootstrap layers a written anchor depends on.
 """
 
 from __future__ import annotations
@@ -376,7 +386,7 @@ def stage_without_anchor(task: str, tests_dir: Path) -> Path:
 
 
 def measure(
-    task: str, keep_image: bool, quiet: bool, ignore_anchors: bool = False
+    task: str, rmi_image: bool, quiet: bool, ignore_anchors: bool = False
 ) -> tuple[int, list[str]]:
     """Build the task image and run its real verifier against the bootstrap state."""
     env_dir = TASKS_DIR / task / "environment"
@@ -454,7 +464,7 @@ def measure(
         shutil.rmtree(logs, ignore_errors=True)
         if staged_root is not None:
             shutil.rmtree(staged_root, ignore_errors=True)
-        if not keep_image:
+        if rmi_image:
             subprocess.run(
                 ["docker", "rmi", "-f", image],
                 capture_output=True,
@@ -603,10 +613,32 @@ def main() -> int:
         metavar="N",
         help="parallel measurements (default 4; image builds are CPU-bound)",
     )
-    parser.add_argument(
+    # Keeping the images is the DEFAULT, matching scripts/bootstrap_anchor.py
+    # deliberately -- these two CLIs are shaped alike, and a flag that meant
+    # opposite things in the two would be its own footgun. This one tags its
+    # images `vacuity-floor-<task>` rather than the anchor script's
+    # `bootstrap-anchor-<task>`, so deleting here does not remove an anchored
+    # image directly; what it can do is evict cached bootstrap layers that no
+    # surviving image still references. CI never reaches this code at all (it
+    # passes --ctrf, which scores an existing report without building), so the
+    # only cost of the safe default is disk on a full-suite pass.
+    images = parser.add_mutually_exclusive_group()
+    images.add_argument(
+        "--rmi-images",
+        action="store_true",
+        help="docker rmi each image once it has been measured. MUST NOT be "
+             "used before a sweep: it can evict the cached bootstrap layers a "
+             "written anchor depends on. Measured, it reclaims very little -- "
+             "these images share their layers with the ones the sweep builds, "
+             "and the BuildKit cache the procedure forbids pruning pins them "
+             "anyway -- so this is an escape hatch, not a disk budget.",
+    )
+    images.add_argument(
         "--keep-images",
         action="store_true",
-        help="do not docker rmi the images this script builds",
+        help="accepted for compatibility; keeping the images is now the "
+             "default, so its only remaining effect is to make a "
+             "simultaneous --rmi-images a parse error.",
     )
     parser.add_argument(
         "--ignore-anchors",
@@ -650,7 +682,10 @@ def main() -> int:
                 total, passing = read_ctrf(Path(args.ctrf))
             else:
                 total, passing = measure(
-                    task, args.keep_images, args.quiet, args.ignore_anchors
+                    task,
+                    rmi_image=args.rmi_images,
+                    quiet=args.quiet,
+                    ignore_anchors=args.ignore_anchors,
                 )
         except MeasureError as exc:
             failures[task] = [str(exc)]

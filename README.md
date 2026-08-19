@@ -14,9 +14,12 @@ The write-up these records back is **`results/2026-08-19-skill-armG.md`**.
 **Arm G is the blind-authorship arm.** It fills arm D's slot in the 2026-08-16
 six-arm design (`archive/2026-08-16-skill-ab-trials` @ `b7746772c4`) with one
 byte changed: the injected document. Arm D's reference was written by us with
-the failing tasks in view; arm G's was written from the jj 0.44.0 binary, the
-v0.44.0 docs and the changelog alone, by an author who never saw the task suite,
-the fixtures, the verifiers or any prior result.
+the failing tasks in view; arm G's was written from the v0.44.0 docs, the
+v0.44.0-tagged CLI-reference snapshot and the changelog alone, by an author who
+never saw the task suite, the fixtures, the verifiers or any prior result. The
+author had no `jj` binary; the binary was run only by the separate fact-check
+pass. The *brief* the author worked from was not blind — see
+`results/2026-08-19-skill-armG.md`, Limitations 5.
 
 - **jj version under test:** 0.44.0
 - **harbor:** 0.20.0 (`armG-blind-forced/lock.json` → `.harbor.version`)
@@ -73,10 +76,13 @@ document is ours — so unlike arms C and E on the 2026-08-16 branch there are n
 redaction placeholders here, and a delivery check run against this archive
 returns the true answer rather than a false zero.
 
+Run from the branch root, so that this README's own prose is out of scope —
+it quotes the literal in the line above:
+
 ```console
-$ grep -rl "ELIDED" . | wc -l
+$ grep -rl "ELIDED" jobs/ | wc -l
 0
-$ find . -type d -path '*/sessions/skills/*' | wc -l
+$ find jobs/ -type d -path '*/sessions/skills/*' | wc -l
 0
 ```
 
@@ -97,13 +103,20 @@ nothing else:
 occurrence each); the 97th is `tools/armG_stats.py`, whose arm registry and
 usage docstring name the run directory — and that file was **restored
 byte-identical afterwards**, because the vendored script must be the script
-that produced the numbers. So the two occurrences under `tools/` remain, on
-purpose, and are the only ones left:
+that produced the numbers. **No trial record retains the path.** Three files
+still name it, none of them a record (run from the branch root):
 
 ```console
-$ grep -rl "/root/scratch/armG" . | grep -v '^./jobs/2026-08-19-armG/tools/' | wc -l
-0
+$ grep -rl "/root/scratch/armG" . | sort
+./README.md
+./jobs/2026-08-19-armG/MANIFEST.txt
+./jobs/2026-08-19-armG/tools/armG_stats.py
 ```
+
+`README.md` is this file (the rewrite rule above and this command);
+`MANIFEST.txt` names the two source paths in its provenance header;
+`tools/armG_stats.py` is the restored-byte-identical script. Two occurrences
+each, six in total.
 
 That path contains no session identifier and no credential; the rewrite is for
 consistency with the other archive branches, not for redaction. All 675 JSON
@@ -173,8 +186,9 @@ differ**:
 | `extra_instruction_paths` | `["arms/forced-reference.md"]` | `["arms/armG-reference.md"]` | intended — the one manipulated variable |
 | `jobs_dir` | `"jobs"` | *absent* | an artifact of the 2026-08-16 archive's path rewriting, not a run difference |
 
-On `jobs_dir`: harbor serialises the resolved config with `exclude_defaults=True`
-(`harbor/cli/jobs.py:1519`) and the default is `jobs_dir: Path = Path("jobs")`
+On `jobs_dir`: harbor writes the job `config.json` with `exclude_defaults=True`
+(`harbor/job.py:751-752`; `harbor/cli/jobs.py:1519` is the `--print-config`
+twin) and the default is `jobs_dir: Path = Path("jobs")`
 (`harbor/models/job/config.py:320`), so arm G — launched with `--jobs-dir jobs`,
 which equals the default — omits the key. Arm D recorded a non-default absolute
 path, which the 2026-08-16 archive's prefix rewrite collapsed to the string
@@ -235,13 +249,25 @@ git remote add origin https://github.com/moredatarequired/jj-benchmark
 git fetch --depth=1 origin 42273ba1ac3f17cd6d3122c1442258b995498858
 git checkout -q FETCH_HEAD
 mv tasks informed_tasks && mkdir -p informed && mv informed_tasks informed/tasks
-python3 scripts/bootstrap_anchor.py --write      # builds all 24 images and KEEPS them
-python3 scripts/bootstrap_anchor.py --check
-python3 scripts/bootstrap_anchor.py --verify-untouched
+cp -r scripts informed/scripts                   # REQUIRED — see below
+python3 informed/scripts/bootstrap_anchor.py --write --keep-images
+python3 informed/scripts/bootstrap_anchor.py --check --keep-images
+python3 informed/scripts/bootstrap_anchor.py --verify-untouched --keep-images
 ```
 
-`scripts/bootstrap_anchor.py` anchors the tree its own `__file__` lives in and
-has no path flag, so it must be run from the scratch tree. The anchors it
+**Two things in that block are load-bearing, and the obvious shorter form
+fails.** `scripts/bootstrap_anchor.py` anchors the tree its own `__file__`
+lives in (`42273ba1ac:scripts/bootstrap_anchor.py:164-165`,
+`REPO_ROOT = Path(__file__).resolve().parent.parent`) and has no path flag, so
+running it from `scripts/` after the `tasks` → `informed/tasks` move exits 1
+with `error: .../tasks does not exist`. The run of record copied `scripts/`
+into the dataset tree first, which is what the `cp -r` line reproduces.
+And **`--keep-images` is not the default at this pin**: at `42273ba1ac` the
+flag is `store_true` and `measure()`/`verify_untouched()` do
+`docker rmi -f` on every image they build unless it is passed (`:635-636`,
+`:975-976`), so a bare `--write` deletes all 24 task images and the next step
+rebuilds them from a partly-evicted layer cache. Keep-by-default arrives only
+after this pin. The anchors it
 writes (`tasks/*/tests/bootstrap_anchor.json`) are gitignored at `.gitignore:74`,
 so `git status` stays silent about a stale one — `--check` is the loud signal.
 
@@ -349,7 +375,9 @@ run with 0 mismatches, covering the per-arm means, the arm intervals and DEFF,
 all 11 published contrasts, the permutation legs, the channel/content share
 block (byte-identical), the per-task table and the anchor and cost figures. The
 one section that moves is Holm, by design: with G loaded the primary family
-becomes G's three contrasts. Re-running the published seven-contrast family with
+becomes G's three contrasts. That family choice is load-bearing — folding G's
+three contrasts into the published seven (a family of ten) moves E − D from
+0.0480 to 0.0686 and retires the six-arm study's only Holm-surviving result. Re-running the published seven-contrast family with
 G loaded (`--primary D-A,F-A,D-C,F-C,D-F,E-D,E-C`) reproduces every published
 adjusted p exactly, and E − D remains the only published contrast surviving
 correction.
@@ -543,3 +571,11 @@ session that runs it, and says nothing about the 8 it skipped.
   `a22214c6a228dc54b897b4898b4200ca20dd4afb9f6fc9e5ec51b6502b51908b`.
 - **No third-party skill text**, in any form. Arm G neither used nor produced
   any.
+- **The evidence behind several numbers in the write-up.** The leak-scan corpus
+  and scripts (748 items, 115 hits, the 128-hit re-scan), the fact-check report
+  (7 fixes, 94 claims), the pre-arm-G validation run the 436 A-F cells were
+  compared against, the anchor pre-flight (`--write`/`--check`/
+  `--verify-untouched`, 24/24 clean), the authoring brief and the author's
+  transcript, and the run scratchpad this README's step 5 reproduces line for
+  line. All of it lives in the session record. A reader with only this branch
+  can re-derive every reward, contrast and delivery claim, and none of those.

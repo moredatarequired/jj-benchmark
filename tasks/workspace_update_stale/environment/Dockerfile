@@ -53,6 +53,28 @@ RUN mkdir -p /home/user/myproject && \
 #   - /home/user/myproject  - jj repository (stale workspace)
 #   - /home/user/workspace_b - another workspace that modified the repo
 #   - config.json in workspace_b with {"status": "pending", "new": true}
+#   - /home/user/AGENTS.md (+ CLAUDE.md symlink) - project conventions for the agent.
+
+# Project conventions for coding agents. Deliberately placed in /home/user, the
+# PARENT of the project directory, and never inside the repository: two verifiers
+# assert an exact tracked-file set, so a committed AGENTS.md caps a correct solve
+# below 1.0. What makes it reach the agent is the filename CLAUDE.md, not the
+# symlink: captured on Claude Code 2.1.235 inside the built task image,
+# /home/user/CLAUDE.md arrives in the assembled system prompt under `Contents of
+# /home/user/CLAUDE.md (project instructions, checked into the codebase):`, and a
+# bare AGENTS.md is not delivered, at that position or at the project root;
+# reproduced on Claude Code 2.1.42 against a replica of the layout. How the
+# harness finds the file was not measured, only that it arrives -- evidence in
+# results/2026-08-14-baseline-24.md:40-52. The `ln -s` spelling below is pinned
+# by scripts/lint_tasks.py, so all 24 copies stay byte-identical and comparable;
+# AGENTS.md is the real file so the note also suits agents reading that name.
+RUN printf '%s\n' \
+      '# Contributing' \
+      '' \
+      'This project uses Jujutsu (`jj`) for version control. Please use `jj` for all' \
+      'version control work in this repository; `git` should not be used for it.' \
+      > /home/user/AGENTS.md && \
+    ln -s AGENTS.md /home/user/CLAUDE.md
 
 # Where the agent starts. Harbor passes no `-w` to `docker exec` and no
 # task.toml sets [environment] workdir, so the agent process inherits the

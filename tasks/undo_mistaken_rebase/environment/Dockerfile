@@ -24,6 +24,27 @@ RUN mkdir -p /home/user && chmod 0755 /home/user
 LABEL Author="any-task-builder"
 LABEL Description="jj repo with branches for rebase"
 RUN mkdir -p /home/user/repo && cd /home/user/repo && jj git init --colocate && jj config set --user user.name 'Test User' && jj config set --user user.email 'test@example.com' && echo 'base' > f && jj commit -m 'base' && jj bookmark create main && echo 'A' > f && jj commit -m 'A' && jj new main && echo 'B' > f && jj commit -m 'B'
+# Project conventions for coding agents. Deliberately placed in /home/user, the
+# PARENT of the project directory, and never inside the repository: two verifiers
+# assert an exact tracked-file set, so a committed AGENTS.md caps a correct solve
+# below 1.0. What makes it reach the agent is the filename CLAUDE.md, not the
+# symlink: captured on Claude Code 2.1.235 inside the built task image,
+# /home/user/CLAUDE.md arrives in the assembled system prompt under `Contents of
+# /home/user/CLAUDE.md (project instructions, checked into the codebase):`, and a
+# bare AGENTS.md is not delivered, at that position or at the project root;
+# reproduced on Claude Code 2.1.42 against a replica of the layout. How the
+# harness finds the file was not measured, only that it arrives -- evidence in
+# results/2026-08-14-baseline-24.md:40-52. The `ln -s` spelling below is pinned
+# by scripts/lint_tasks.py, so all 24 copies stay byte-identical and comparable;
+# AGENTS.md is the real file so the note also suits agents reading that name.
+RUN printf '%s\n' \
+      '# Contributing' \
+      '' \
+      'This project uses Jujutsu (`jj`) for version control. Please use `jj` for all' \
+      'version control work in this repository; `git` should not be used for it.' \
+      > /home/user/AGENTS.md && \
+    ln -s AGENTS.md /home/user/CLAUDE.md
+
 # Where the agent starts. Harbor passes no `-w` to `docker exec` and no
 # task.toml sets [environment] workdir, so the agent process inherits the
 # image's working directory -- and with no WORKDIR anywhere in the chain up to

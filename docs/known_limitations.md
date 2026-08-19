@@ -1,9 +1,9 @@
 # Known Limitations
 
-A record of known limitations in the benchmark's integrity and floor machinery, with the
-decisions taken on each.
+A record of known limitations in the benchmark's integrity and floor machinery, and in
+what the task images tell the agent, with the decisions taken on each.
 
-Recording three things we know about and have decided not to fix right now, so they are
+Recording four things we know about and have decided not to fix right now, so they are
 written down somewhere other than a review thread.
 
 ## 1. Three latent skip-handling holes in `scripts/vacuity_floor.py`
@@ -113,10 +113,89 @@ abandon` as the other way this check can fail. What the check does is unchanged 
 limitation above stands. The correction landed as its own small PR rather than riding
 along with a task change, because the file is byte-identical across every task.
 
+## 4. What the `/home/user/AGENTS.md` note in every task image costs
+
+Every task image now writes `/home/user/AGENTS.md` and delivers it to the agent under the
+name `CLAUDE.md`, one directory above the project. The whole of it is a `# Contributing`
+heading and two sentences: the project uses Jujutsu; `git` should not be used for it.
+Five things go with it that no run artifact records, so they are written down here at more
+length than the note itself.
+
+**`main` now builds informed images, so the uninformed sweep is no longer on `main`.**
+`results/2026-08-12-3model-baseline.md` is the one sweep with a file of its own here that
+was measured with no such note in the tree, and no future sweep from `main` is comparable to
+it. Little turns on that particular file — its own header already retires it, because it
+measured 53 tasks and the suite is 24 — but the informed/uninformed difference is now a
+second reason on top of the task-set difference, and it applies to every sweep after this
+one, not just to that one. It also settles a decision that was left open in writing:
+`results/2026-08-14-baseline-24.md:21-22` says "whether the informed arm ships as a change to
+the suite is a separate and still-open decision". This change is that decision, taken, and
+the baselines the current tree is comparable to are the informed ones —
+`results/2026-08-14-baseline-24.md` and arm A of `results/2026-08-16-skill-ab.md`.
+
+**Delivery is coupled to two things nothing tests.** The first is the `WORKDIR`. No
+`task.toml` sets `[environment] workdir`, so the agent inherits the image's working
+directory, and all 24 Dockerfiles set that to the project directory inside `/home/user` —
+the layout the capture below was taken against. A working directory of `/`, which is what
+these images had before the `WORKDIR` lines were added, is not that layout, and nothing has
+been measured about what reaches the agent from there. No verifier and no lint check asserts
+where the `WORKDIR` points; the check added alongside this section asserts only that the
+block writing the note is present and identical across the 24. The second is one harness's
+file-discovery rules. The filename is what makes the note arrive: captured on Claude Code
+2.1.235 inside the built task image, `/home/user/CLAUDE.md` arrives in the assembled system
+prompt under `Contents of /home/user/CLAUDE.md (project instructions, checked into the
+codebase):`, while a bare `AGENTS.md` is not delivered at either position — so an adapter
+that looks for `AGENTS.md` only at the project root receives nothing. Reproduced on Claude
+Code 2.1.42 against a replica of the layout. *How* the harness locates the file was not
+measured, only that it arrives; the capture is recorded at
+`results/2026-08-14-baseline-24.md:44-52`. Two versions of one harness is the whole of the
+evidence.
+
+**The note does not buy compliance.** `results/2026-08-16-skill-ab.md:97` records
+`fileset_rollback` taking the git route in 4 of 4 arm-A attempts — `git restore` / `git
+checkout HEAD --` plus `rm`, invoking jj zero times, verified command by command — in
+exactly this informed condition, with three of the four still scoring 1.0. Being told which
+tool the project uses is not the same as using it.
+
+**The one substantive sentence is discriminating information for the tasks whose designed
+trap is the git route.** Two tasks are specifically exposed. On `bookmark_left_behind`, the
+A/B's own notes have it losing one of its two traps by fiat; that job was never archived, so
+that claim is *not* reproducible from this repository and is recorded here as testimony
+rather than measurement. What this repository does record is adjacent and checkable: the
+verifier deliberately grades the colocated-git push route as a full solve
+(`tasks/bookmark_left_behind/tests/test_final_state.py:47`), so a categorical "do not use
+`git`" steers the agent off a route the task itself treats as correct. On
+`git_fetch_remote`, the solve is spelled `jj git …` — `jj git fetch` and `jj git push`, in a
+repository the bootstrap made with `jj git clone`
+(`tasks/git_fetch_remote/environment/Dockerfile:51`) — which sits awkwardly against a
+sentence saying `git` should not be used. Nothing measured shows it being hurt: it is a
+ceiling task in four of the A/B's six arms (1.000 in A, B, D and E;
+`results/2026-08-16-skill-ab.md:116`).
+
+**No trial record says the note was there.** The graded prompt is the `task_description` in
+`bootstrap/task.json`, byte-identical to `instruction.md` and checked as such by
+`scripts/lint_tasks.py`; the note is in neither, and in no per-trial artifact. It exists
+only in the image, which means a reader comparing two run records cannot tell an informed
+arm from an uninformed one from the artifacts. Where it is written down at all, it is
+because a person put it into a run's provenance paragraph by hand
+(`results/2026-08-16-skill-ab.md:149`, which records the note's sha256 and the symlink).
+
+**Decision recorded: ship the note and carry these five costs rather than drop it.** The
+measurement that motivates it is in `results/2026-08-14-baseline-24.md:54-56`: the informed
+images ran `jj` at least once in 261 of 273 scored trials, against 12 of 48 in the
+uninformed control of a one-trial-per-cell A/B run the same day, and a jj benchmark whose
+agents mostly use git measures something else. What is closed is only the drift mode. The
+note is duplicated by hand into all 24 Dockerfiles with no shared base image, so
+`scripts/lint_tasks.py` (`check_conventions_block`, `check_conventions_identical`) now
+requires the block exactly once per task and byte-identical across the 24 — a half-applied
+edit would otherwise leave the suite silently split into informed and uninformed halves with
+green CI. Nothing above is closed by that check.
+
 ## Exposure
 
-None of this is reachable from CI today. The bounding fact on the floor holes is that CI
-only ever runs `vacuity_floor.py --check`, never `--write`:
+None of the first three above is reachable from CI today; section 4 states its own exposure
+inline. The bounding fact on the floor holes is that CI only ever runs
+`vacuity_floor.py --check`, never `--write`:
 `.github/workflows/tasks.yml:202` is the sole invocation in the workflow, and `--check`
 compares against the committed floor rather than replacing it, so a corrupted measurement
 fails the build instead of being recorded. (The `--write` that appears at line 194 is text
